@@ -1,0 +1,39 @@
+loan:
+  down_payment_pct: 0.20        # 20% down
+  interest_rate: 0.07           # 7% annual
+  loan_term_years: 30
+  closing_costs: 5000.00        # flat estimate
+
+expenses:
+  property_mgmt_pct: 0.10       # 10% of gross income
+  insurance_annual: 1500.00     # fallback if no listed insurance & no per-unit basis
+  insurance_per_unit: 500.00    # IRE default: 500 * number of units
+  maintenance_reserve_pct: 0.05 # 5% of gross income
+  vacancy_rate: 0.05            # 5% vacancy assumption
+  utilities_monthly: 0.00       # landlord-paid utilities (0 if tenant pays)
+  # IRE itemized / CapEx knobs (mirrors sample_proforma.xlsx)
+  capex_reserve_pct: 0.05       # Replacement Reserves (% of gross income)
+  leasing_fee_pct: 0.00         # leasing fee (% of gross income); 0 = off
+  trash_annual: 360.00          # 30/mo * 12
+  recycle_per_unit: 50.00       # 50 per unit annually
+  sewer_annual: 600.00
+  water_annual: 0.00            # 0 = tenant-paid / off
+
+targets:
+  min_monthly_cash_flow: 200       # $200/mo minimum cash flow
+  min_cash_on_cash_pct: 0.12       # 12% annual cash-on-cash return
+  min_cap_rate_pct: 0.07           # 7% cap rate
+  min_dscr: 1.20                   # 1.20x debt service coverage ratio
+  max_ltv: 0.80                    # 80% max loan-to-value
+
+# Per-property overrides — key must match the listing URL (or prefix of it).
+# Any PropertyListing field can be overridden here, plus nested loan/expenses blocks.
+property_overrides: {}
+# Example:
+#   "https://portal.onehome.com/listings/12345":
+#     estimated_rent_monthly: 2800
+#     annual_taxes: 6200
+#     loan:
+#       down_payment_pct: 0.25
+#     expenses:
+#       insurance_annual: 2000

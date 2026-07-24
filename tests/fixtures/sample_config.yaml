@@ -1,0 +1,24 @@
+loan:
+  down_payment_pct: 0.20
+  interest_rate: 0.07
+  loan_term_years: 30
+  closing_costs: 5000.00
+
+expenses:
+  property_mgmt_pct: 0.10
+  insurance_annual: 1500.00
+  insurance_per_unit: 500.00
+  maintenance_reserve_pct: 0.05
+  vacancy_rate: 0.05
+  utilities_monthly: 0.00
+  capex_reserve_pct: 0.05
+  leasing_fee_pct: 0.00
+  trash_annual: 360.00
+  recycle_per_unit: 50.00
+  sewer_annual: 600.00
+  water_annual: 0.00
+
+property_overrides:
+  "https://portal.onehome.com/listings/12345":
+    estimated_rent_monthly: 2800
+    annual_taxes: 6200

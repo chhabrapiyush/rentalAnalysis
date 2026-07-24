@@ -1,0 +1,12 @@
+{
+  "url": "https://portal.onehome.com/listings/12345",
+  "address": "123 Main St, Austin TX 78701",
+  "list_price": 400000,
+  "beds": 3,
+  "baths": 2,
+  "sqft": 1800,
+  "annual_taxes": 6000,
+  "hoa_monthly": 100,
+  "estimated_rent_monthly": 2500,
+  "days_on_market": 14
+}

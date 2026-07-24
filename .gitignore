@@ -1,0 +1,18 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.xlsx
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.cache/
+*.log
+.DS_Store
+
+# Local scratch/debug scripts (contain token-bearing listing URLs)
+debug_*
+
