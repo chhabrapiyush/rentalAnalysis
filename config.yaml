@@ -19,6 +19,10 @@ expenses:
   sewer_annual: 600.00
   water_annual: 0.00            # 0 = tenant-paid / off
 
+# Fallback monthly rent (% of price) for listings with no OneHome income data.
+# Used when batch-analyzing a saved search; such listings are flagged "incomplete".
+fallback_rent_monthly_pct: 0.007   # 0.7% of price per month
+
 targets:
   min_monthly_cash_flow: 200       # $200/mo minimum cash flow
   min_cash_on_cash_pct: 0.12       # 12% annual cash-on-cash return

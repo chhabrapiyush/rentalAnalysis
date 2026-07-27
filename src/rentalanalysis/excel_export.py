@@ -117,8 +117,9 @@ def _collect_misc_listing_fields(result: AnalysisResult) -> list[tuple[str, str]
 
 # ── Per-property IRE proforma sheet ──────────────────────────────────────────
 
-def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetConfig) -> None:
-    title = result.listing.slug or f"Property_{id(result)}"
+def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetConfig,
+                         sheet_title: str | None = None) -> None:
+    title = sheet_title or (result.listing.slug or f"Property_{id(result)}")[:31]
     ws = wb.create_sheet(title)
 
     L = result.listing
@@ -149,6 +150,14 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     t = ws.cell(row=1, column=1, value=f"IRE Proforma — {L.address}")
     t.font = Font(bold=True, size=13, color="1F4E79")
     ws.merge_cells("A1:D1")
+
+    # Incomplete-data banner (row 2 is otherwise empty, so no coordinates shift)
+    if not result.data_complete:
+        note = result.data_notes[0] if result.data_notes else "No OneHome income data."
+        b = ws.cell(row=2, column=1, value=f"⚠ INCOMPLETE — {note} Edit the yellow rent cells to complete.")
+        b.font = Font(bold=True, color="FFFFFF")
+        b.fill = PatternFill(fill_type="solid", fgColor="C0392B")
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=13)
 
     # ════════════════════════════════════════════════════════════════════════
     #  RIGHT-TOP: LOAN & VALUE  (cols F/G, rows 3-10)  — anchors used elsewhere
@@ -775,6 +784,19 @@ def write_comparison_sheet(wb: Workbook, results: list[AnalysisResult], targets:
 
 # ── Main entry point ─────────────────────────────────────────────────────────
 
+def _unique_sheet_title(base: str, used: set[str]) -> str:
+    """Excel sheet titles must be unique and ≤ 31 chars."""
+    base = (base or "Property")[:31]
+    title = base
+    n = 2
+    while title.lower() in used:
+        suffix = f" ({n})"
+        title = base[: 31 - len(suffix)] + suffix
+        n += 1
+    used.add(title.lower())
+    return title
+
+
 def build_workbook(results: list[AnalysisResult], output_path: Path, config: AnalysisConfig | None = None) -> Path:
     targets = config.targets if config else TargetConfig()
     wb = Workbook()
@@ -782,8 +804,10 @@ def build_workbook(results: list[AnalysisResult], output_path: Path, config: Ana
         del wb["Sheet"]
 
     write_comparison_sheet(wb, results, targets)
+    used_titles: set[str] = {"overview"}
     for result in results:
-        write_property_sheet(wb, result, targets)
+        title = _unique_sheet_title(result.listing.slug or "Property", used_titles)
+        write_property_sheet(wb, result, targets, sheet_title=title)
 
     wb.save(output_path)
     return output_path

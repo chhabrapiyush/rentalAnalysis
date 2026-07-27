@@ -113,19 +113,35 @@ def analyze_property(
     config: AnalysisConfig,
     monthly_rent_override: Optional[float] = None,
     purchase_price_override: Optional[float] = None,
+    use_fallback_rent: bool = False,
 ) -> AnalysisResult:
     purchase_price = purchase_price_override if purchase_price_override is not None else listing.list_price
     monthly_rent = monthly_rent_override if monthly_rent_override is not None else listing.estimated_rent_monthly
 
+    data_complete = True
+    data_notes: list[str] = []
+    fallback_pct = config.fallback_rent_monthly_pct
+
     if monthly_rent is None:
-        raise ValueError(
-            f"No rent estimate for {listing.address!r}. "
-            "Provide --rent on the CLI or set estimated_rent_monthly in property_overrides."
-        )
+        # Batch runs fall back to an assumed rent so no listing is dropped; single
+        # calls stay strict and raise so the caller can supply an explicit rent.
+        if use_fallback_rent and purchase_price > 0 and fallback_pct > 0:
+            monthly_rent = purchase_price * fallback_pct
+            data_complete = False
+            data_notes.append(
+                f"No OneHome income data — rent assumed at {fallback_pct:.2%} of price/mo."
+            )
+        else:
+            raise ValueError(
+                f"No rent estimate for {listing.address!r}. "
+                "Provide --rent on the CLI or set estimated_rent_monthly in property_overrides."
+            )
 
     # Where did the rent come from? Overrides are user assumptions; otherwise prefer
     # the OneHome rent roll, then the OneHome gross income figure.
-    if monthly_rent_override is not None:
+    if not data_complete:
+        rent_source = "Assumed (fallback)"
+    elif monthly_rent_override is not None:
         rent_source = "Assumed"
     elif listing.rent_roll and any(u.monthly_rent for u in listing.rent_roll):
         rent_source = "OneHome (rent roll)"
@@ -255,6 +271,8 @@ def analyze_property(
 
     return AnalysisResult(
         listing=listing,
+        data_complete=data_complete,
+        data_notes=data_notes,
         gross_rental_income=round(gross_rental_income, 2),
         rent_roll_annual=round(rent_roll_annual, 2),
         income_basis=income_basis,

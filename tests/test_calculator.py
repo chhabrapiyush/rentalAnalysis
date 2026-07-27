@@ -289,6 +289,33 @@ def test_expense_uses_calculated_when_higher(sample_listing, sample_config):
     assert result.opex_basis == "Calculated"
 
 
+def test_no_rent_raises_without_fallback(sample_config):
+    listing = PropertyListing(
+        url="https://example.com/x", address="No Income Ln", list_price=300_000,
+        beds=3, baths=2, estimated_rent_monthly=None,
+    )
+    with pytest.raises(ValueError, match="No rent estimate"):
+        analyze_property(listing, sample_config)
+
+
+def test_fallback_rent_used_and_flagged(sample_config):
+    listing = PropertyListing(
+        url="https://example.com/x", address="No Income Ln", list_price=300_000,
+        beds=3, baths=2, estimated_rent_monthly=None,
+    )
+    result = analyze_property(listing, sample_config, use_fallback_rent=True)
+    # 0.7% of 300k = 2,100/mo → 25,200/yr
+    assert result.data_complete is False
+    assert result.gross_rental_income == pytest.approx(25_200, abs=0.01)
+    assert result.rent_source == "Assumed (fallback)"
+    assert result.data_notes
+
+
+def test_fallback_not_used_when_rent_present(sample_listing, sample_config):
+    result = analyze_property(sample_listing, sample_config, use_fallback_rent=True)
+    assert result.data_complete is True
+
+
 def test_electric_expense_added_to_opex(sample_listing, sample_config):
     listing = sample_listing.model_copy(update={"electric_expense_listed": 350})
     base = analyze_property(sample_listing, sample_config)

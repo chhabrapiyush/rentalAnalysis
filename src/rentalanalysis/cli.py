@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
-from .calculator import analyze_property, apply_property_overrides
+from .calculator import analyze_property, apply_property_overrides, evaluate_deal
 from .excel_export import build_workbook
 from .models import AnalysisConfig, AnalysisResult
 from .scraper import AuthenticationError, scrape_listings
@@ -38,6 +38,7 @@ def analyze(
     price: Optional[float] = typer.Option(None, "--price", help="Purchase price override"),
     headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headlessly"),
     max_pages: int = typer.Option(10, "--max-pages", help="Max search result pages to paginate"),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Max properties to analyze from a search"),
     cache: bool = typer.Option(True, "--cache/--no-cache", help="Use cached scrape results"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
@@ -73,11 +74,11 @@ def analyze(
     # Scrape (includes search pagination if --search-url provided)
     try:
         if search_url and not all_urls:
-            console.print(f"Paginating search results from: {search_url}")
+            console.print("Collecting properties from the saved search…")
 
         listings = asyncio.run(
             _scrape_with_search(
-                all_urls, search_url, email, password, headless, cache, max_pages
+                all_urls, search_url, email, password, headless, cache, max_pages, limit
             )
         )
     except AuthenticationError as exc:
@@ -93,23 +94,40 @@ def analyze(
 
     console.print(f"Scraped [bold]{len(listings)}[/bold] listings. Running analysis...")
 
-    # Analyze
+    # Analyze — never drop a listing: no-income ones fall back to an assumed rent.
     results: list[AnalysisResult] = []
-    for listing in listings:
+    incomplete = 0
+    failed = 0
+    total = len(listings)
+    for i, listing in enumerate(listings, start=1):
         eff_listing, eff_cfg = apply_property_overrides(listing, cfg)
         try:
-            result = analyze_property(eff_listing, eff_cfg, monthly_rent_override=rent, purchase_price_override=price)
+            result = analyze_property(
+                eff_listing, eff_cfg,
+                monthly_rent_override=rent, purchase_price_override=price,
+                use_fallback_rent=True,
+            )
             results.append(result)
-        except ValueError as exc:
-            console.print(f"[yellow]Skipping {listing.address}:[/yellow] {exc}")
+            verdict = evaluate_deal(result, cfg.targets)["verdict"]
+            flag = "  [red]⚠ incomplete[/red]" if not result.data_complete else ""
+            if not result.data_complete:
+                incomplete += 1
+            console.print(f"[dim][{i}/{total}][/dim] {listing.address} — [bold]{verdict}[/bold]{flag}")
+        except Exception as exc:
+            failed += 1
+            console.print(f"[yellow][{i}/{total}] Skipping {listing.address}:[/yellow] {exc}")
 
     if not results:
-        console.print("[red]No properties could be analyzed (missing rent estimates?).[/red]")
+        console.print("[red]No properties could be analyzed.[/red]")
         raise typer.Exit(1)
 
     # Export
     build_workbook(results, output, cfg)
     console.print(f"\n[green]Saved:[/green] {output.resolve()}")
+    console.print(
+        f"Analyzed [bold]{len(results)}[/bold] of {total} "
+        f"({incomplete} flagged incomplete, {failed} failed)."
+    )
 
     # Summary table
     _print_summary(results)
@@ -123,10 +141,11 @@ async def _scrape_with_search(
     headless: bool,
     cache: bool,
     max_pages: int,
+    limit: Optional[int] = None,
 ) -> list:
     from playwright.async_api import async_playwright
 
-    from .scraper import paginate_search_results, scrape_listing, _load_cache, _save_cache
+    from .scraper import collect_search_property_urls, scrape_listing, _load_cache, _save_cache
     import random
 
     all_urls = list(urls)
@@ -143,8 +162,11 @@ async def _scrape_with_search(
         page = await context.new_page()
 
         if search_url:
-            discovered = await paginate_search_results(page, search_url, max_pages)
+            discovered = await collect_search_property_urls(page, search_url, limit=limit)
+            console.print(f"Found [bold]{len(discovered)}[/bold] properties in the search.")
             all_urls = list(dict.fromkeys(all_urls + discovered))  # dedupe, preserve order
+            if limit is not None:
+                all_urls = all_urls[:limit]
 
         results = []
         for url in all_urls:

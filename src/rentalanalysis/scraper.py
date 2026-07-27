@@ -8,6 +8,7 @@ import random
 import re
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import parse_qs, urlparse
 
 from playwright.async_api import Page, async_playwright
 
@@ -336,35 +337,140 @@ async def scrape_listing(page: Page, url: str, email: str = "", password: str = 
     )
 
 
-async def paginate_search_results(page: Page, search_url: str, max_pages: int = 10) -> list[str]:
-    await page.goto(search_url, timeout=60_000, wait_until="domcontentloaded")
-    await asyncio.sleep(2)
+_AOTF_RE = re.compile(r"aotf~\d+~[A-Z]+")
 
-    urls: set[str] = set()
 
-    for page_num in range(max_pages):
-        anchors = await page.query_selector_all("a[href*='/listing'], a[href*='/property']")
-        for a in anchors:
-            href = await a.get_attribute("href")
-            if href:
-                if href.startswith("/"):
-                    href = "https://portal.onehome.com" + href
-                urls.add(href)
+def _to_list_view(search_url: str) -> str:
+    """Normalize a OneHome saved-search URL to the /properties/list route.
 
-        log.info("Page %d: found %d listing URLs so far", page_num + 1, len(urls))
+    The map view only renders properties inside the current map viewport; the list
+    view covers the whole result set. Query params (token, searchId) are preserved.
+    """
+    return re.sub(r"/properties/(map|gallery)\b", "/properties/list", search_url)
 
-        next_btn = await page.query_selector(
-            "button[aria-label*='next' i], a[aria-label*='next' i], button:has-text('Next')"
-        )
-        if not next_btn:
-            break
+
+def _reconstruct_property_url(aotf_id: str, search_url: str) -> str:
+    """Build a full property URL from an aotf id + the search URL's token/searchId.
+
+    aotf_id is the full token captured by _AOTF_RE, e.g. 'aotf~123~HIGH'.
+    """
+    q = parse_qs(urlparse(search_url).query)
+    token = q.get("token", [""])[0]
+    search_id = q.get("searchId", [""])[0]
+    url = f"https://portal.onehome.com/en-US/property/{aotf_id}"
+    parts = []
+    if token:
+        parts.append(f"token={token}")
+    if search_id:
+        parts.append(f"searchId={search_id}")
+    return url + ("?" + "&".join(parts) if parts else "")
+
+
+_LISTING_ID_RE = re.compile(r'"id":"(aotf~\d+~[A-Z]+)"')
+
+
+async def collect_search_property_urls(
+    page: Page, search_url: str, limit: Optional[int] = None, max_scrolls: int = 60
+) -> list[str]:
+    """Walk a saved OneHome search and return every property URL in it.
+
+    Primary path: the Angular app fetches results with a `GetSavedListings` GraphQL
+    call whose request carries the full list of member listing ids. We capture that
+    request (query + auth), then replay it in chunks of 25 (the server page size) to
+    enumerate every listing's `aotf~…` id — no scrolling / virtual-list guesswork.
+    Falls back to scroll-harvesting result-card anchors if the call isn't seen.
+    """
+    list_url = _to_list_view(search_url)
+
+    captured: dict = {}
+
+    def _on_request(req):
         try:
-            await next_btn.click()
-            await asyncio.sleep(random.uniform(1.5, 3.0))
+            if "graphql" in req.url and req.post_data and "GetSavedListings" in req.post_data:
+                captured["url"] = req.url
+                captured["headers"] = dict(req.headers)
+                captured["body"] = json.loads(req.post_data)
         except Exception:
-            break
+            pass
 
-    return list(urls)
+    page.on("request", _on_request)
+    try:
+        await page.goto(list_url, timeout=60_000, wait_until="networkidle")
+        await asyncio.sleep(4)
+        # Give the results query a chance to fire.
+        for _ in range(12):
+            if captured.get("body"):
+                break
+            await asyncio.sleep(0.5)
+    finally:
+        page.remove_listener("request", _on_request)
+
+    ordered_ids: list[str] = []
+    seen: set[str] = set()
+
+    body = captured.get("body")
+    if body:
+        all_ids = body.get("variables", {}).get("listingIds", []) or []
+        headers = {k: v for k, v in captured.get("headers", {}).items()
+                   if k.lower() in ("authorization", "content-type")}
+        log.info("Search has %d saved listings; fetching via GraphQL replay", len(all_ids))
+        for i in range(0, len(all_ids), 25):
+            chunk = all_ids[i:i + 25]
+            payload = json.loads(json.dumps(body))          # deep copy
+            payload["variables"]["listingIds"] = chunk
+            payload["variables"]["suppressEvent"] = True
+            try:
+                resp = await page.request.post(captured["url"], headers=headers, data=json.dumps(payload))
+                text = await resp.text()
+            except Exception as exc:
+                log.warning("GraphQL replay chunk failed: %s", exc)
+                continue
+            for aotf_id in _LISTING_ID_RE.findall(text):
+                if aotf_id not in seen:
+                    seen.add(aotf_id)
+                    ordered_ids.append(aotf_id)
+            if limit is not None and len(ordered_ids) >= limit:
+                break
+
+    # Fallback: scroll-harvest result-card anchors if the GraphQL path yielded nothing.
+    if not ordered_ids:
+        log.info("Falling back to scroll-harvest of result cards")
+        plateau = 0
+        for step in range(max_scrolls):
+            hrefs = await page.evaluate(
+                """() => Array.from(document.querySelectorAll("a[href*='/property/aotf']"))
+                          .map(a => a.getAttribute('href')).filter(Boolean)"""
+            )
+            before = len(seen)
+            for href in hrefs:
+                m = _AOTF_RE.search(href)
+                if m and m.group(0) not in seen:
+                    seen.add(m.group(0))
+                    ordered_ids.append(m.group(0))
+            if limit is not None and len(ordered_ids) >= limit:
+                break
+            plateau = plateau + 1 if len(seen) == before else 0
+            if plateau >= 6:
+                break
+            await page.evaluate(
+                """() => {
+                    const v = document.querySelector('cdk-virtual-scroll-viewport')
+                      || [...document.querySelectorAll('*')]
+                           .filter(e => e.scrollHeight > e.clientHeight + 100)
+                           .sort((a, b) => b.scrollHeight - a.scrollHeight)[0];
+                    if (v) v.scrollTop = v.scrollTop + v.clientHeight * 0.9;
+                }"""
+            )
+            await asyncio.sleep(random.uniform(0.8, 1.3))
+
+    urls = [_reconstruct_property_url(aotf_id, search_url) for aotf_id in ordered_ids]
+    log.info("Collected %d property URLs from search", len(urls))
+    return urls[:limit] if limit is not None else urls
+
+
+# Backwards-compatible alias
+async def paginate_search_results(page: Page, search_url: str, max_pages: int = 10) -> list[str]:
+    return await collect_search_property_urls(page, search_url)
 
 
 async def scrape_listings(

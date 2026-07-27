@@ -114,6 +114,8 @@ class AnalysisConfig(BaseModel):
     loan: LoanConfig = LoanConfig()
     expenses: ExpenseConfig = ExpenseConfig()
     targets: TargetConfig = TargetConfig()
+    # Fallback monthly rent (as % of price) for listings with no OneHome income data.
+    fallback_rent_monthly_pct: float = 0.007
     property_overrides: dict[str, dict] = {}
 
     @classmethod
@@ -125,6 +127,10 @@ class AnalysisConfig(BaseModel):
 
 class AnalysisResult(BaseModel):
     listing: PropertyListing
+
+    # Data quality
+    data_complete: bool = True                   # False when OneHome income data was missing
+    data_notes: list[str] = []                   # human-readable caveats
 
     # Income
     gross_rental_income: float                   # conservative basis actually used
