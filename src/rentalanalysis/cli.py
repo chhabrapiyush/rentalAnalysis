@@ -39,6 +39,7 @@ def analyze(
     headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headlessly"),
     max_pages: int = typer.Option(10, "--max-pages", help="Max search result pages to paginate"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Max properties to analyze from a search"),
+    email_to: Optional[str] = typer.Option(None, "--email-to", help="Email the workbook to this address (SMTP_* env vars)"),
     cache: bool = typer.Option(True, "--cache/--no-cache", help="Use cached scrape results"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
@@ -131,6 +132,17 @@ def analyze(
 
     # Summary table
     _print_summary(results)
+
+    # Optional email delivery (handy when triggering a run from mobile)
+    if email_to:
+        from .delivery import EmailConfigError, send_workbook_email
+        try:
+            send_workbook_email(output, email_to)
+            console.print(f"[green]Emailed[/green] workbook to {email_to}.")
+        except EmailConfigError as exc:
+            console.print(f"[yellow]Email skipped:[/yellow] {exc}")
+        except Exception as exc:
+            console.print(f"[red]Email failed:[/red] {exc}")
 
 
 async def _scrape_with_search(
