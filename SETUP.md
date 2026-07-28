@@ -51,6 +51,26 @@ the current URL (the `/properties/map?token=…&searchId=…` link).
 Caching (`.cache/`) makes re-runs fast and lets a run resume after partial failures.
 Use `--no-cache` to force a fresh scrape.
 
+## Trigger from GitHub (mobile-friendly, no Claude session)
+
+A `workflow_dispatch` Action (`.github/workflows/analyze.yml`) runs the analysis on
+GitHub's runners and emails you the workbook (or leaves it as a downloadable
+artifact).
+
+1. **Add repo secrets** — Settings → Secrets and variables → Actions → New secret:
+   | Secret | Required | |
+   |---|---|---|
+   | `ONEHOME_EMAIL` / `ONEHOME_PASSWORD` | yes | portal login |
+   | `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | for email | Gmail: App Password |
+   | `SMTP_PORT` / `EMAIL_FROM` | optional | default 587 / `SMTP_USER` |
+2. **Run it** — Actions tab → *Analyze Investment Properties* → **Run workflow**,
+   paste a fresh saved-search URL (optionally a `limit` and `email_to`). On a phone,
+   the GitHub mobile app / mobile web both expose this "Run workflow" button.
+3. Get the result by email (if `email_to` set) or download the run's
+   **investment_properties** artifact.
+
+> The saved-search token expires — paste a current URL each run.
+
 ## From your phone, in practice
 
 1. Open `claude.ai/code` (browser or Claude app) and select this repo.

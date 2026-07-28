@@ -1,0 +1,62 @@
+name: Analyze Investment Properties
+
+# Trigger manually from the GitHub UI (incl. mobile): Actions → this workflow →
+# Run workflow → paste a fresh OneHome saved-search URL.
+on:
+  workflow_dispatch:
+    inputs:
+      search_url:
+        description: "OneHome saved-search URL (must contain a current token)"
+        required: true
+      limit:
+        description: "Max properties to analyze (blank = all)"
+        required: false
+        default: ""
+      email_to:
+        description: "Email the workbook to this address (blank = download the artifact instead)"
+        required: false
+        default: ""
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ONEHOME_EMAIL: ${{ secrets.ONEHOME_EMAIL }}
+      ONEHOME_PASSWORD: ${{ secrets.ONEHOME_PASSWORD }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies + browser
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          python -m playwright install --with-deps chromium
+
+      - name: Run analysis
+        env:
+          SEARCH_URL: ${{ inputs.search_url }}
+          LIMIT: ${{ inputs.limit }}
+          EMAIL_TO: ${{ inputs.email_to }}
+        run: |
+          ARGS=(analyze --search-url "$SEARCH_URL" -o investment_properties.xlsx)
+          if [ -n "$LIMIT" ]; then ARGS+=(--limit "$LIMIT"); fi
+          if [ -n "$EMAIL_TO" ]; then ARGS+=(--email-to "$EMAIL_TO"); fi
+          rentalysis "${ARGS[@]}"
+
+      - name: Upload workbook artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: investment_properties
+          path: investment_properties.xlsx
+          if-no-files-found: warn
