@@ -1,4 +1,10 @@
-from rentalanalysis.scraper import _to_list_view, _reconstruct_property_url
+from rentalanalysis.scraper import _to_list_view, _reconstruct_property_url, _is_single_property_url
+
+
+def test_detects_single_property_url():
+    assert _is_single_property_url("https://portal.onehome.com/en-US/property/aotf~123~HIGH?token=x")
+    assert not _is_single_property_url("https://portal.onehome.com/en-US/properties/map?token=x")
+    assert not _is_single_property_url("https://portal.onehome.com/en-US/consumer-share/abc123")
 
 
 def test_map_url_normalized_to_list():

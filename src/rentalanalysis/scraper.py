@@ -369,6 +369,10 @@ def _reconstruct_property_url(aotf_id: str, search_url: str) -> str:
 _LISTING_ID_RE = re.compile(r'"id":"(aotf~\d+~[A-Z]+)"')
 
 
+def _is_single_property_url(url: str) -> bool:
+    return "/property/aotf~" in url
+
+
 async def collect_search_property_urls(
     page: Page, search_url: str, limit: Optional[int] = None, max_scrolls: int = 60
 ) -> list[str]:
@@ -379,7 +383,32 @@ async def collect_search_property_urls(
     request (query + auth), then replay it in chunks of 25 (the server page size) to
     enumerate every listing's `aotf~…` id — no scrolling / virtual-list guesswork.
     Falls back to scroll-harvesting result-card anchors if the call isn't seen.
+
+    Also accepts a single-property link or a `consumer-share/…` link: the former is
+    returned as-is; the latter is opened and followed to wherever it redirects
+    (a property → that one; a search view → collected normally).
     """
+    # A direct property link isn't a search — just analyze that one.
+    if _is_single_property_url(search_url):
+        return [search_url]
+
+    # A "share" link (what the OneHome Share button produces) must be resolved.
+    if "/consumer-share/" in search_url:
+        try:
+            await page.goto(search_url, timeout=60_000, wait_until="networkidle")
+            await asyncio.sleep(3)
+            resolved = page.url
+        except Exception:
+            resolved = search_url
+        if _is_single_property_url(resolved):
+            log.info("Share link resolved to a single property.")
+            return [resolved]
+        if "/properties/" in resolved:
+            search_url = resolved  # a shared search view — collect from it
+        else:
+            log.warning("Share link did not resolve to a search or property: %s", resolved)
+            return []
+
     list_url = _to_list_view(search_url)
 
     captured: dict = {}
