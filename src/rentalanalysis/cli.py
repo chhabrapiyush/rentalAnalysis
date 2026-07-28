@@ -90,8 +90,12 @@ def analyze(
         raise typer.Exit(1)
 
     if not listings:
-        console.print("[yellow]No listings found or scraped. Exiting.[/yellow]")
-        raise typer.Exit(0)
+        console.print(
+            "[red]No properties found.[/red] For a whole search, pass the saved-search "
+            "URL (it contains 'searchId='); for one home, pass the property URL "
+            "('/property/aotf~...'). A stale token can also yield zero — grab a fresh URL."
+        )
+        raise typer.Exit(1)
 
     console.print(f"Scraped [bold]{len(listings)}[/bold] listings. Running analysis...")
 

@@ -130,6 +130,19 @@ def test_overview_sorted_by_cash_on_cash(tmp_path, sample_config):
     assert ws.cell(row=3, column=2).value == "Good Deal St"   # highest CoC first
 
 
+def test_ratio_formulas_are_divzero_guarded(tmp_path, sample_listing, sample_config):
+    result = analyze_property(sample_listing, sample_config)
+    out = tmp_path / "guard.xlsx"
+    build_workbook([result], out, sample_config)
+    wb = openpyxl.load_workbook(out)
+    ws = wb[[n for n in wb.sheetnames if n != "Overview"][0]]
+    formulas = [c.value for row in ws.iter_rows() for c in row
+                if isinstance(c.value, str) and c.value.startswith("=")]
+    # Cap rate, DSCR and CoC all divide — each must be IFERROR-wrapped.
+    guarded = [f for f in formulas if "IFERROR" in f]
+    assert len(guarded) >= 3
+
+
 def test_currency_formatting_present(tmp_path, sample_listing, sample_config):
     result = analyze_property(sample_listing, sample_config)
     out = tmp_path / "test.xlsx"

@@ -432,7 +432,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _calc(ws, R_DMDS, 3, f"=C{R_DADS}/12", CURRENCY_FMT)
     refs["monthly_payment"] = f"C{R_DMDS}"
     _label(ws, R_DSCR, 1, "DSCR (Eff. NOI / ADS)", bold=True)
-    _calc(ws, R_DSCR, 3, f"=C{R_ENOI}/C{R_DADS}", NUMBER_FMT, bold=True)
+    _calc(ws, R_DSCR, 3, f"=IFERROR(C{R_ENOI}/C{R_DADS},0)", NUMBER_FMT, bold=True)
     refs["dscr"] = f"C{R_DSCR}"
     _label(ws, R_MAXDS, 1, f"Max Debt Svc @ {targets.min_dscr:g}x DSCR")
     _calc(ws, R_MAXDS, 3, f"=C{R_ENOI}/{targets.min_dscr}", CURRENCY_FMT)
@@ -455,7 +455,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
         r += 1
     R_CAP, R_VAL, R_UCF, R_LCF, R_COC = r, r + 1, r + 2, r + 3, r + 4
     _label(ws, R_CAP, 10, "Cap Rate", bold=True)
-    _calc(ws, R_CAP, 11, f"=C{R_NOI}/G{R_PRICE}", PERCENT_FMT, bold=True)
+    _calc(ws, R_CAP, 11, f"=IFERROR(C{R_NOI}/G{R_PRICE},0)", PERCENT_FMT, bold=True)
     ws.cell(row=R_CAP, column=11).fill = GREEN_FILL
     refs["cap_rate"] = f"K{R_CAP}"
     _label(ws, R_VAL, 10, "Valuation @ Cap Rate")
@@ -467,7 +467,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _calc(ws, R_LCF, 11, f"=C{R_ENOI}-C{R_DADS}", CURRENCY_FMT, bold=True)
     refs["cash_flow_annual"] = f"K{R_LCF}"
     _label(ws, R_COC, 10, "Cash-on-Cash", bold=True)
-    _calc(ws, R_COC, 11, f"=K{R_LCF}/G{R_INIT}", PERCENT_FMT, bold=True)
+    _calc(ws, R_COC, 11, f"=IFERROR(K{R_LCF}/G{R_INIT},0)", PERCENT_FMT, bold=True)
     ws.cell(row=R_COC, column=11).fill = GREEN_FILL
     refs["cash_on_cash"] = f"K{R_COC}"
 
@@ -799,7 +799,7 @@ def write_comparison_sheet(wb: Workbook, columns: list, targets: TargetConfig) -
             elif attr == "cash_flow_monthly" and "cash_flow_annual" in refs:
                 formula = f"={_q(title)}!{refs['cash_flow_annual']}/12"
             elif attr == "grm" and "list_price" in refs and "rent_roll_annual" in refs:
-                formula = f"={_q(title)}!{refs['list_price']}/{_q(title)}!{refs['rent_roll_annual']}"
+                formula = f"=IFERROR({_q(title)}!{refs['list_price']}/{_q(title)}!{refs['rent_roll_annual']},0)"
             elif attr == "_beds_baths":
                 cell_val = f"{result.listing.beds}bd / {result.listing.baths}ba"
             elif attr == "_target_cf":

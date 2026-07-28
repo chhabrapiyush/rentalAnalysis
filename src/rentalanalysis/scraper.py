@@ -48,20 +48,21 @@ def _save_cache(listing: PropertyListing) -> None:
 
 
 def _safe_float(v: Any) -> Optional[float]:
+    """Extract the first number from a value like '$1,850/mo' or '2 units'."""
     if v is None:
         return None
+    m = re.search(r"-?\d[\d,]*\.?\d*", str(v))
+    if not m:
+        return None
     try:
-        cleaned = re.sub(r"[$,\s/yr/mo]", "", str(v))
-        return float(cleaned)
+        return float(m.group(0).replace(",", ""))
     except (ValueError, TypeError):
         return None
 
 
 def _safe_int(v: Any) -> Optional[int]:
-    try:
-        return int(str(v).strip())
-    except (ValueError, TypeError):
-        return None
+    f = _safe_float(v)
+    return int(f) if f is not None else None
 
 
 def _is_login_page(url: str) -> bool:
@@ -199,15 +200,27 @@ async def _extract_rent_roll(page: Page) -> list[dict]:
     return groups or []
 
 
+async def _safe_goto(page: Page, url: str) -> None:
+    """Navigate resiliently: prefer networkidle, fall back if the SPA never idles."""
+    try:
+        await page.goto(url, timeout=45_000, wait_until="networkidle")
+    except Exception:
+        try:
+            await page.goto(url, timeout=45_000, wait_until="domcontentloaded")
+            await asyncio.sleep(2.0)
+        except Exception as exc:
+            log.warning("Navigation issue for %s: %s", url, exc)
+
+
 async def scrape_listing(page: Page, url: str, email: str = "", password: str = "") -> PropertyListing:
-    await page.goto(url, timeout=60_000, wait_until="networkidle")
+    await _safe_goto(page, url)
     await asyncio.sleep(2.5)
 
     # If redirected to login, attempt authentication
     if _is_login_page(page.url) and email:
         log.info("Redirected to login. Attempting authentication...")
         await login(page, email, password)
-        await page.goto(url, timeout=60_000, wait_until="networkidle")
+        await _safe_goto(page, url)
         await asyncio.sleep(2.5)
 
     # --- Price (visible on Overview tab) ---
@@ -232,10 +245,14 @@ async def scrape_listing(page: Page, url: str, email: str = "", password: str = 
     sqft = _safe_float(raw_sqft)
 
     # --- Click Property Details tab to reveal financial DT/DD data ---
+    # Guarded: a failed click must not lose the overview data already gathered.
     details_tab = await page.query_selector("button[aria-label='Property Details'], button[aria-label*='Property Details']")
     if details_tab:
-        await details_tab.click()
-        await asyncio.sleep(1.5)
+        try:
+            await details_tab.click()
+            await asyncio.sleep(1.5)
+        except Exception as exc:
+            log.warning("Could not open Property Details tab for %s: %s", url, exc)
 
     details = await _extract_dt_dd_map(page)
     log.debug("Extracted %d property detail fields", len(details))
@@ -394,12 +411,12 @@ async def collect_search_property_urls(
 
     # A "share" link (what the OneHome Share button produces) must be resolved.
     if "/consumer-share/" in search_url:
-        try:
-            await page.goto(search_url, timeout=60_000, wait_until="networkidle")
-            await asyncio.sleep(3)
-            resolved = page.url
-        except Exception:
-            resolved = search_url
+        await _safe_goto(page, search_url)
+        for _ in range(10):  # wait for the redirect away from /consumer-share/
+            if "/consumer-share/" not in page.url:
+                break
+            await asyncio.sleep(0.5)
+        resolved = page.url
         if _is_single_property_url(resolved):
             log.info("Share link resolved to a single property.")
             return [resolved]
@@ -424,7 +441,7 @@ async def collect_search_property_urls(
 
     page.on("request", _on_request)
     try:
-        await page.goto(list_url, timeout=60_000, wait_until="networkidle")
+        await _safe_goto(page, list_url)
         await asyncio.sleep(4)
         # Give the results query a chance to fire.
         for _ in range(12):

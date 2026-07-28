@@ -1,4 +1,23 @@
-from rentalanalysis.scraper import _to_list_view, _reconstruct_property_url, _is_single_property_url
+from rentalanalysis.scraper import (
+    _to_list_view, _reconstruct_property_url, _is_single_property_url,
+    _safe_float, _safe_int,
+)
+
+
+def test_safe_float_extracts_from_messy_strings():
+    assert _safe_float("$1,850/mo") == 1850.0
+    assert _safe_float("$261.90") == 261.90
+    assert _safe_float("57,000") == 57000.0
+    assert _safe_float("N/A") is None
+    assert _safe_float(None) is None
+    assert _safe_float("Brick") is None
+
+
+def test_safe_int_handles_unit_suffix():
+    assert _safe_int("2 units") == 2
+    assert _safe_int("5") == 5
+    assert _safe_int("--") is None
+    assert _safe_int(None) is None
 
 
 def test_detects_single_property_url():
