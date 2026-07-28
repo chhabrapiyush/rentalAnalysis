@@ -159,11 +159,16 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
         b.fill = PatternFill(fill_type="solid", fgColor="C0392B")
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=13)
 
+    # Cell-reference map (metric key -> cell address) so the Overview can point here.
+    refs: dict[str, str] = {}
+
     # ════════════════════════════════════════════════════════════════════════
     #  RIGHT-TOP: LOAN & VALUE  (cols F/G, rows 3-10)  — anchors used elsewhere
     # ════════════════════════════════════════════════════════════════════════
     _block_header(ws, 3, 6, 8, "LOAN & VALUE")
     R_PRICE, R_LTV, R_LOAN, R_DOWN, R_CLOSE, R_REPAIR, R_INIT = 4, 5, 6, 7, 8, 9, 10
+    refs.update(list_price=f"G{R_PRICE}", ltv=f"G{R_LTV}", loan_amount=f"G{R_LOAN}",
+                total_cash_invested=f"G{R_INIT}")
     _label(ws, R_PRICE, 6, "Purchase Price");        _input(ws, R_PRICE, 7, price, CURRENCY0_FMT)
     _label(ws, R_LTV, 6, "LTV");                     _input(ws, R_LTV, 7, round(result.ltv, 4), PERCENT_FMT)
     _label(ws, R_LOAN, 6, "Loan Amount");            _calc(ws, R_LOAN, 7, f"=G{R_PRICE}*G{R_LTV}", CURRENCY0_FMT)
@@ -180,6 +185,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     roll = list(result.listing.rent_roll or [])
     rent_is_onehome = result.rent_source.startswith("OneHome")
     R_NUNITS = 13
+    refs["total_units"] = f"G{R_NUNITS}"
     _label(ws, R_NUNITS, 6, "Number of Units")
     _input(ws, R_NUNITS, 7, units, NUMBER_FMT)
     _note(ws, R_NUNITS, 8, "OneHome" if result.listing.total_units else "Assumed")
@@ -240,6 +246,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _input(ws, ir, 3, 0, CURRENCY_FMT)
     ir += 1
     R_RENTROLL = ir
+    refs["rent_roll_annual"] = f"C{R_RENTROLL}"
     _label(ws, ir, 1, "Rent Roll Subtotal")
     _calc(ws, ir, 3, f"=SUM(C{R_LEASES}:C{R_OTHER})", CURRENCY_FMT)
     ir += 1
@@ -247,6 +254,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     listed_gi = result.listing.gross_income_annual_listed
     if listed_gi is not None:
         R_LISTGI = ir
+        refs["listed_gross_income"] = f"C{R_LISTGI}"
         _label(ws, ir, 1, "Listed Gross Income (OneHome)")
         _static(ws, ir, 3, listed_gi, CURRENCY_FMT)
         _note(ws, ir, 4, "OneHome")
@@ -260,15 +268,18 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
         _label(ws, ir, 1, "Gross Operating Income", bold=True)
         _calc(ws, ir, 3, f"=C{R_RENTROLL}", CURRENCY_FMT, bold=True)
     ws.cell(row=R_GROSS, column=3).fill = TOTAL_FILL
+    refs["gross_rental_income"] = f"C{R_GROSS}"
     ir += 1
 
     R_VAC = ir
+    refs["vacancy_loss"] = f"C{R_VAC}"
     _label(ws, ir, 1, "Vacancy & Credit Loss")
     _input(ws, ir, 2, vacancy_pct, PERCENT_FMT)
     _calc(ws, ir, 3, f'=IF(D{R_VAC}="y",C{R_GROSS}*B{R_VAC},0)', CURRENCY_FMT)
     _input(ws, ir, 4, "y")
     ir += 1
     R_EGI = ir
+    refs["effective_gross_income"] = f"C{R_EGI}"
     _label(ws, ir, 1, "Effective Gross Income", bold=True)
     _calc(ws, ir, 3, f"=C{R_GROSS}-C{R_VAC}", CURRENCY_FMT, bold=True)
     ws.cell(row=R_EGI, column=3).fill = TOTAL_FILL
@@ -283,51 +294,67 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
 
     def _exp_static(label, value, source):
         nonlocal er
-        _label(ws, er, 1, label)
-        _static(ws, er, 3, value, CURRENCY_FMT)
-        _note(ws, er, 4, source)
+        row = er
+        _label(ws, row, 1, label)
+        _static(ws, row, 3, value, CURRENCY_FMT)
+        _note(ws, row, 4, source)
         er += 1
+        return row
 
     def _exp_pct(label, pct, gross_ref, on=True):
         nonlocal er
-        _label(ws, er, 1, label)
-        _input(ws, er, 2, pct, PERCENT_FMT)
-        _calc(ws, er, 3, f'=IF(D{er}="y",C{gross_ref}*B{er},0)', CURRENCY_FMT)
-        _input(ws, er, 4, "y" if on else "n")
+        row = er
+        _label(ws, row, 1, label)
+        _input(ws, row, 2, pct, PERCENT_FMT)
+        _calc(ws, row, 3, f'=IF(D{row}="y",C{gross_ref}*B{row},0)', CURRENCY_FMT)
+        _input(ws, row, 4, "y" if on else "n")
         er += 1
+        return row
 
     def _exp_formula(label, formula, source):
         nonlocal er
-        _label(ws, er, 1, label)
-        _calc(ws, er, 3, formula, CURRENCY_FMT)
-        _note(ws, er, 4, source)
+        row = er
+        _label(ws, row, 1, label)
+        _calc(ws, row, 3, formula, CURRENCY_FMT)
+        _note(ws, row, 4, source)
         er += 1
+        return row
 
     def _exp_input(label, value):
         nonlocal er
-        _label(ws, er, 1, label)
-        _input(ws, er, 3, value, CURRENCY_FMT)
+        row = er
+        _label(ws, row, 1, label)
+        _input(ws, row, 3, value, CURRENCY_FMT)
         er += 1
+        return row
 
     exp_first = er
-    _exp_static("Real Estate Taxes", result.taxes_annual, "OneHome" if L.annual_taxes else "Assumed")
+    refs["taxes_annual"] = f"C{_exp_static('Real Estate Taxes', result.taxes_annual, 'OneHome' if L.annual_taxes else 'Assumed')}"
     if L.insurance_annual_listed:
-        _exp_static("Insurance", result.insurance_annual, "OneHome")
+        refs["insurance"] = f"C{_exp_static('Insurance', result.insurance_annual, 'OneHome')}"
     else:
-        _exp_formula("Insurance", f"={insurance_per_unit}*G{R_NUNITS}", "Assumed")
-    _exp_pct("Management Fee", mgmt_pct, R_GROSS, on=True)
-    if L.maintenance_annual_listed:
-        _exp_static("Maintenance / Repairs", result.maintenance_annual, "OneHome")
-    else:
-        _exp_pct("Maintenance / Repairs", maint_pct, R_GROSS, on=True)
-    _exp_static("HOA / Association", result.hoa_annual, "OneHome" if L.hoa_monthly else "Assumed")
+        refs["insurance"] = f"C{_exp_formula('Insurance', f'={insurance_per_unit}*G{R_NUNITS}', 'Assumed')}"
+    refs["mgmt_fee_annual"] = f"C{_exp_pct('Management Fee', mgmt_pct, R_GROSS, on=True)}"
+
+    # Maintenance = MAX(listed, 10% of gross) — conservative, live-recalculating.
+    m_row = er
+    listed_maint = L.maintenance_annual_listed or 0.0
+    _label(ws, m_row, 1, "Maintenance / Repairs")
+    _input(ws, m_row, 2, maint_pct, PERCENT_FMT)
+    _calc(ws, m_row, 3, f'=IF(D{m_row}="y",MAX({listed_maint},C{R_GROSS}*B{m_row}),0)', CURRENCY_FMT)
+    _input(ws, m_row, 4, "y")
+    refs["maintenance"] = f"C{m_row}"
+    er += 1
+
+    refs["hoa_annual"] = f"C{_exp_static('HOA / Association', result.hoa_annual, 'OneHome' if L.hoa_monthly else 'Assumed')}"
     if result.electric_annual:
-        _exp_static("Electric", result.electric_annual, "OneHome")
-    _exp_input("Utilities (landlord-paid)", result.utilities_annual)
+        refs["electric_annual"] = f"C{_exp_static('Electric', result.electric_annual, 'OneHome')}"
+    util_first = _exp_input("Utilities (landlord-paid)", result.utilities_annual)
     _exp_input("Trash Removal", result.trash_annual)
     _exp_input("Water", result.water_annual)
     _exp_input("Sewer", result.sewer_annual)
-    _exp_formula("Recycle", f"={recycle_per_unit}*G{R_NUNITS}", "Assumed")
+    util_last = _exp_formula("Recycle", f"={recycle_per_unit}*G{R_NUNITS}", "Assumed")
+    refs["utilities_first"], refs["utilities_last"] = f"C{util_first}", f"C{util_last}"
     _exp_pct("Leasing Fees", leasing_pct, R_GROSS, on=(leasing_pct > 0))
     for mlabel, mval in result.misc_expense_items.items():
         _exp_static(mlabel, mval, "OneHome")
@@ -335,12 +362,14 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
 
     # Itemized subtotal, listed reference, and the conservative "used" total (MAX).
     R_ITEMSUM = er
+    refs["operating_expenses"] = f"C{R_ITEMSUM}"
     _label(ws, R_ITEMSUM, 1, "Itemized Expenses Subtotal")
     _calc(ws, R_ITEMSUM, 3, f"=SUM(C{exp_first}:C{exp_last})", CURRENCY_FMT)
     er += 1
     listed_opex = result.listed_operating_expenses
     if listed_opex is not None:
         R_LISTOPEX = er
+        refs["listed_operating_expenses"] = f"C{R_LISTOPEX}"
         _label(ws, R_LISTOPEX, 1, "Listed Operating Expense (OneHome)")
         _static(ws, R_LISTOPEX, 3, listed_opex, CURRENCY_FMT)
         _note(ws, R_LISTOPEX, 4, "OneHome")
@@ -354,14 +383,17 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
         _label(ws, R_TOTOPEX, 1, "Total Operating Expenses", bold=True)
         _calc(ws, R_TOTOPEX, 3, f"=C{R_ITEMSUM}", CURRENCY_FMT, bold=True)
     ws.cell(row=R_TOTOPEX, column=3).fill = TOTAL_FILL
+    refs["operating_expenses_used"] = f"C{R_TOTOPEX}"
     er += 1
     R_CAPEX = er
+    refs["capex_reserve"] = f"C{R_CAPEX}"
     _label(ws, R_CAPEX, 1, "Replacement Reserves (CapEx)")
     _input(ws, R_CAPEX, 2, capex_pct, PERCENT_FMT)
     _calc(ws, R_CAPEX, 3, f'=IF(D{R_CAPEX}="y",C{R_GROSS}*B{R_CAPEX},0)', CURRENCY_FMT)
     _input(ws, R_CAPEX, 4, "y")
     er += 1
     R_TOTNET = er
+    refs["total_net_operating_expenses"] = f"C{R_TOTNET}"
     _label(ws, R_TOTNET, 1, "Total Net Operating Expenses", bold=True)
     _calc(ws, R_TOTNET, 3, f"=C{R_TOTOPEX}+C{R_CAPEX}", CURRENCY_FMT, bold=True)
     ws.cell(row=R_TOTNET, column=3).fill = TOTAL_FILL
@@ -369,12 +401,14 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
 
     # ── NOI (two-tier) ──
     R_NOI = er
+    refs["noi"] = f"C{R_NOI}"
     _label(ws, R_NOI, 1, "Net Operating Income (NOI)", bold=True)
     _calc(ws, R_NOI, 3, f"=C{R_EGI}-C{R_TOTOPEX}", CURRENCY_FMT, bold=True)
     ws.cell(row=R_NOI, column=3).fill = GREEN_FILL
     ws.cell(row=R_NOI, column=4, value="cap rate").font = NOTE_ASSUMED
     er += 1
     R_ENOI = er
+    refs["effective_noi"] = f"C{R_ENOI}"
     _label(ws, R_ENOI, 1, "Effective NOI (after CapEx)", bold=True)
     _calc(ws, R_ENOI, 3, f"=C{R_EGI}-C{R_TOTNET}", CURRENCY_FMT, bold=True)
     ws.cell(row=R_ENOI, column=3).fill = GREEN_FILL
@@ -393,10 +427,13 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _input(ws, R_DAMORT, 3, 360, NUMBER_FMT)
     _label(ws, R_DADS, 1, "Annual Debt Service", bold=True)
     _calc(ws, R_DADS, 3, f"=PMT(C{R_DRATE}/12,C{R_DAMORT},-C{R_DLOAN})*12", CURRENCY_FMT, bold=True)
+    refs["annual_debt_service"] = f"C{R_DADS}"
     _label(ws, R_DMDS, 1, "Monthly Debt Service")
     _calc(ws, R_DMDS, 3, f"=C{R_DADS}/12", CURRENCY_FMT)
+    refs["monthly_payment"] = f"C{R_DMDS}"
     _label(ws, R_DSCR, 1, "DSCR (Eff. NOI / ADS)", bold=True)
     _calc(ws, R_DSCR, 3, f"=C{R_ENOI}/C{R_DADS}", NUMBER_FMT, bold=True)
+    refs["dscr"] = f"C{R_DSCR}"
     _label(ws, R_MAXDS, 1, f"Max Debt Svc @ {targets.min_dscr:g}x DSCR")
     _calc(ws, R_MAXDS, 3, f"=C{R_ENOI}/{targets.min_dscr}", CURRENCY_FMT)
 
@@ -420,15 +457,19 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _label(ws, R_CAP, 10, "Cap Rate", bold=True)
     _calc(ws, R_CAP, 11, f"=C{R_NOI}/G{R_PRICE}", PERCENT_FMT, bold=True)
     ws.cell(row=R_CAP, column=11).fill = GREEN_FILL
+    refs["cap_rate"] = f"K{R_CAP}"
     _label(ws, R_VAL, 10, "Valuation @ Cap Rate")
     _calc(ws, R_VAL, 11, f"=IF(K{R_CAP}>0,C{R_NOI}/K{R_CAP},0)", CURRENCY0_FMT)
+    refs["valuation"] = f"K{R_VAL}"
     _label(ws, R_UCF, 10, "Unleveraged Cash Flow")
     _calc(ws, R_UCF, 11, f"=C{R_NOI}-C{R_CAPEX}", CURRENCY_FMT)
     _label(ws, R_LCF, 10, "Leveraged Cash Flow", bold=True)
     _calc(ws, R_LCF, 11, f"=C{R_ENOI}-C{R_DADS}", CURRENCY_FMT, bold=True)
+    refs["cash_flow_annual"] = f"K{R_LCF}"
     _label(ws, R_COC, 10, "Cash-on-Cash", bold=True)
     _calc(ws, R_COC, 11, f"=K{R_LCF}/G{R_INIT}", PERCENT_FMT, bold=True)
     ws.cell(row=R_COC, column=11).fill = GREEN_FILL
+    refs["cash_on_cash"] = f"K{R_COC}"
 
     # ════════════════════════════════════════════════════════════════════════
     #  RIGHT: PURCHASE DECISION DASHBOARD  (cols J/K/L/M)
@@ -575,6 +616,8 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     else:
         ws.cell(row=rr, column=1, value="N/A — loan amount not available")
 
+    return refs
+
 
 def _derive_rate(result: AnalysisResult) -> float:
     """Back-derive annual interest rate from monthly payment and loan amount."""
@@ -610,22 +653,53 @@ def _amort_from_payment(principal: float, monthly_payment: float, term_years: in
 
 # ── Overview / Comparison Sheet ───────────────────────────────────────────────
 
-def write_comparison_sheet(wb: Workbook, results: list[AnalysisResult], targets: TargetConfig) -> None:
+def _q(sheet_title: str) -> str:
+    """Quote a sheet name for use in a cross-sheet formula."""
+    return "'" + sheet_title.replace("'", "''") + "'"
+
+
+# Overview metric attr -> property-sheet reference key (see write_property_sheet refs).
+_OVERVIEW_REF_KEYS = {
+    "listing.list_price": "list_price", "listing.total_units": "total_units",
+    "loan_amount": "loan_amount", "ltv": "ltv", "monthly_payment": "monthly_payment",
+    "total_cash_invested": "total_cash_invested", "rent_roll_annual": "rent_roll_annual",
+    "listed_gross_income": "listed_gross_income", "gross_rental_income": "gross_rental_income",
+    "vacancy_loss": "vacancy_loss", "effective_gross_income": "effective_gross_income",
+    "taxes_annual": "taxes_annual", "mgmt_fee_annual": "mgmt_fee_annual",
+    "hoa_annual": "hoa_annual", "electric_annual": "electric_annual",
+    "operating_expenses": "operating_expenses", "operating_expenses_used": "operating_expenses_used",
+    "capex_reserve": "capex_reserve", "total_net_operating_expenses": "total_net_operating_expenses",
+    "listed_operating_expenses": "listed_operating_expenses", "noi": "noi",
+    "effective_noi": "effective_noi", "annual_debt_service": "annual_debt_service",
+    "cash_flow_annual": "cash_flow_annual", "cap_rate": "cap_rate",
+    "cash_on_cash": "cash_on_cash", "dscr": "dscr",
+    "_insurance_val": "insurance", "_maintenance_val": "maintenance",
+}
+
+
+def write_comparison_sheet(wb: Workbook, columns: list, targets: TargetConfig) -> None:
+    """columns: list of (sheet_title, AnalysisResult, refs_dict)."""
     ws = wb.create_sheet("Overview", 0)
     ws.column_dimensions["A"].width = 34
+    results = [r for (_t, r, _refs) in columns]
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     title_cell = ws.cell(row=1, column=1, value=f"Rental Property Deal Comparison — {now_str}")
     title_cell.font = Font(bold=True, size=13)
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(results) + 1)
 
+    verdict_fill = {"GO": ("1E8449", "FFFFFF"), "BORDERLINE": ("9A7D0A", "FFFFFF"),
+                    "NO-GO": ("922B21", "FFFFFF")}
     ws.cell(row=3, column=1, value="Metric").font = Font(bold=True)
-    for i, r in enumerate(results, start=2):
+    for i, (title, r, refs) in enumerate(columns, start=2):
         col = get_column_letter(i)
         ws.column_dimensions[col].width = 20
         hdr = ws.cell(row=3, column=i, value=r.listing.address)
-        hdr.font = Font(bold=True)
         hdr.alignment = Alignment(wrap_text=True)
+        verdict = evaluate_deal(r, targets)["verdict"]
+        bg, fg = verdict_fill[verdict]
+        hdr.fill = PatternFill(fill_type="solid", fgColor=bg)
+        hdr.font = Font(bold=True, color=fg)
 
     ws.freeze_panes = "A4"
 
@@ -714,17 +788,20 @@ def write_comparison_sheet(wb: Workbook, results: list[AnalysisResult], targets:
         else:
             ws.cell(row=row, column=1, value=label)
 
-        for i, result in enumerate(results, start=2):
+        for i, (title, result, refs) in enumerate(columns, start=2):
             cell_val = None
-            if attr == "_beds_baths":
+            formula = None
+            key = _OVERVIEW_REF_KEYS.get(attr)
+            if key and key in refs:
+                formula = f"={_q(title)}!{refs[key]}"
+            elif attr == "_utilities_group" and "utilities_first" in refs:
+                formula = f"=SUM({_q(title)}!{refs['utilities_first']}:{refs['utilities_last']})"
+            elif attr == "cash_flow_monthly" and "cash_flow_annual" in refs:
+                formula = f"={_q(title)}!{refs['cash_flow_annual']}/12"
+            elif attr == "grm" and "list_price" in refs and "rent_roll_annual" in refs:
+                formula = f"={_q(title)}!{refs['list_price']}/{_q(title)}!{refs['rent_roll_annual']}"
+            elif attr == "_beds_baths":
                 cell_val = f"{result.listing.beds}bd / {result.listing.baths}ba"
-            elif attr == "_insurance_val":
-                cell_val = result.insurance_annual
-            elif attr == "_maintenance_val":
-                cell_val = result.maintenance_annual
-            elif attr == "_utilities_group":
-                cell_val = (result.utilities_annual + result.trash_annual
-                            + result.water_annual + result.sewer_annual + result.recycle_annual)
             elif attr == "_target_cf":
                 cell_val = targets.min_monthly_cash_flow
             elif attr == "_target_coc":
@@ -750,14 +827,17 @@ def write_comparison_sheet(wb: Workbook, results: list[AnalysisResult], targets:
                         break
                 cell_val = obj
 
-            cell = ws.cell(row=row, column=i, value=cell_val)
-            if fmt and isinstance(cell_val, (int, float)):
+            cell = ws.cell(row=row, column=i, value=formula if formula is not None else cell_val)
+            if fmt and (formula is not None or isinstance(cell_val, (int, float))):
                 cell.number_format = fmt
 
-            if attr in ("cash_flow_annual",) and isinstance(cell_val, (int, float)):
-                cell.fill = GREEN_FILL if cell_val > 0 else (YELLOW_FILL if cell_val > -200 else RED_FILL)
-            if attr == "cash_flow_monthly" and isinstance(cell_val, (int, float)):
-                cell.fill = GREEN_FILL if cell_val > 0 else (YELLOW_FILL if cell_val > -17 else RED_FILL)
+            # Cash-flow coloring keyed off the snapshot result (cells may be formulas now).
+            if attr == "cash_flow_annual":
+                v = result.cash_flow_annual
+                cell.fill = GREEN_FILL if v > 0 else (YELLOW_FILL if v > -200 else RED_FILL)
+            if attr == "cash_flow_monthly":
+                v = result.cash_flow_monthly
+                cell.fill = GREEN_FILL if v > 0 else (YELLOW_FILL if v > -17 else RED_FILL)
 
             if attr == "_opex_flag" and isinstance(cell_val, str):
                 if "OVER" in cell_val:
@@ -803,11 +883,19 @@ def build_workbook(results: list[AnalysisResult], output_path: Path, config: Ana
     if "Sheet" in wb.sheetnames:
         del wb["Sheet"]
 
-    write_comparison_sheet(wb, results, targets)
+    # Rank best-first: highest cash-on-cash, cap rate breaking ties.
+    ranked = sorted(results, key=lambda r: (-r.cash_on_cash, -r.cap_rate))
+
+    # Property sheets first so their names + cell refs exist for the Overview.
     used_titles: set[str] = {"overview"}
-    for result in results:
+    columns: list[tuple[str, AnalysisResult, dict]] = []
+    for result in ranked:
         title = _unique_sheet_title(result.listing.slug or "Property", used_titles)
-        write_property_sheet(wb, result, targets, sheet_title=title)
+        refs = write_property_sheet(wb, result, targets, sheet_title=title)
+        columns.append((title, result, refs))
+
+    # Overview inserted at index 0; references resolve by sheet name.
+    write_comparison_sheet(wb, columns, targets)
 
     wb.save(output_path)
     return output_path

@@ -94,8 +94,8 @@ def test_analyze_property_expense_breakdown(sample_listing, sample_config):
     # Mgmt = 10% of GRI = 3,000
     assert result.mgmt_fee_annual == pytest.approx(3_000, abs=0.01)
 
-    # Maintenance = 5% of GRI = 1,500
-    assert result.maintenance_annual == pytest.approx(1_500, abs=0.01)
+    # Maintenance = 10% of GRI = 3,000 (no listed value → the % assumption)
+    assert result.maintenance_annual == pytest.approx(3_000, abs=0.01)
 
     # Insurance = per-unit basis (500 * 1 unit) since no listed insurance
     assert result.insurance_annual == pytest.approx(500, abs=0.01)
@@ -314,6 +314,19 @@ def test_fallback_rent_used_and_flagged(sample_config):
 def test_fallback_not_used_when_rent_present(sample_listing, sample_config):
     result = analyze_property(sample_listing, sample_config, use_fallback_rent=True)
     assert result.data_complete is True
+
+
+def test_maintenance_uses_greater_of_listed_or_10pct(sample_listing, sample_config):
+    # Listed maintenance ($800) is below 10% of gross ($3,000) → use 10%
+    low = sample_listing.model_copy(update={"maintenance_annual_listed": 800})
+    r_low = analyze_property(low, sample_config)
+    assert r_low.maintenance_annual == pytest.approx(3_000, abs=0.01)
+
+    # Listed maintenance ($5,000) exceeds 10% → keep the listed (greater) value
+    high = sample_listing.model_copy(update={"maintenance_annual_listed": 5_000})
+    r_high = analyze_property(high, sample_config)
+    assert r_high.maintenance_annual == pytest.approx(5_000, abs=0.01)
+    assert r_high.maintenance_source == "OneHome"
 
 
 def test_electric_expense_added_to_opex(sample_listing, sample_config):

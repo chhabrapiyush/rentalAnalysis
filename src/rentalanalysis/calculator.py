@@ -189,12 +189,12 @@ def analyze_property(
         insurance_annual = exp.insurance_annual
         insurance_source = "Assumed"
 
-    if listing.maintenance_annual_listed:
-        maintenance_annual = listing.maintenance_annual_listed
-        maintenance_source = "OneHome"
-    else:
-        maintenance_annual = gross_rental_income * exp.maintenance_reserve_pct
-        maintenance_source = "Assumed"
+    # Maintenance: the greater of the listing's figure and the % assumption
+    # (conservative — never understate maintenance).
+    maint_candidate = gross_rental_income * exp.maintenance_reserve_pct
+    listed_maint = listing.maintenance_annual_listed or 0.0
+    maintenance_annual = max(listed_maint, maint_candidate)
+    maintenance_source = "OneHome" if listed_maint >= maint_candidate and listed_maint > 0 else "Assumed"
 
     mgmt_fee_annual = gross_rental_income * exp.property_mgmt_pct
     hoa_annual = listing.hoa_monthly * 12

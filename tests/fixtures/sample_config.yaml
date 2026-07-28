@@ -8,7 +8,7 @@ expenses:
   property_mgmt_pct: 0.10
   insurance_annual: 1500.00
   insurance_per_unit: 500.00
-  maintenance_reserve_pct: 0.05
+  maintenance_reserve_pct: 0.10
   vacancy_rate: 0.05
   utilities_monthly: 0.00
   capex_reserve_pct: 0.05

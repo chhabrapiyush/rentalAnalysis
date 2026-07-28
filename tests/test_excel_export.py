@@ -98,6 +98,38 @@ def test_incomplete_listing_gets_banner(tmp_path, sample_config):
     assert "INCOMPLETE" in str(ws.cell(row=2, column=1).value)
 
 
+def test_overview_values_reference_property_sheets(tmp_path, sample_listing, sample_config):
+    result = analyze_property(sample_listing, sample_config)
+    out = tmp_path / "ref.xlsx"
+    build_workbook([result], out, sample_config)
+    wb = openpyxl.load_workbook(out)
+    ws = wb["Overview"]
+    sheet = [n for n in wb.sheetnames if n != "Overview"][0]
+    # At least one Overview data cell should be a cross-sheet formula to the property sheet
+    found_ref = False
+    for row in ws.iter_rows(min_col=2, max_col=2):
+        for cell in row:
+            if isinstance(cell.value, str) and cell.value.startswith("=") and sheet[:10] in cell.value:
+                found_ref = True
+    assert found_ref
+
+
+def test_overview_sorted_by_cash_on_cash(tmp_path, sample_config):
+    # Two properties with different returns; the higher CoC must be the first column.
+    good = {"url": "https://x/good", "address": "Good Deal St", "list_price": 200000,
+            "beds": 3, "baths": 2, "annual_taxes": 2000, "estimated_rent_monthly": 3000}
+    weak = {"url": "https://x/weak", "address": "Weak Deal Ave", "list_price": 600000,
+            "beds": 3, "baths": 2, "annual_taxes": 9000, "estimated_rent_monthly": 2000}
+    r_good = make_result(good, sample_config)
+    r_weak = make_result(weak, sample_config)
+    assert r_good.cash_on_cash > r_weak.cash_on_cash
+    out = tmp_path / "sorted.xlsx"
+    build_workbook([r_weak, r_good], out, sample_config)  # deliberately weak-first input
+    wb = openpyxl.load_workbook(out)
+    ws = wb["Overview"]
+    assert ws.cell(row=3, column=2).value == "Good Deal St"   # highest CoC first
+
+
 def test_currency_formatting_present(tmp_path, sample_listing, sample_config):
     result = analyze_property(sample_listing, sample_config)
     out = tmp_path / "test.xlsx"

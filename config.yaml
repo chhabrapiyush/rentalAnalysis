@@ -8,7 +8,7 @@ expenses:
   property_mgmt_pct: 0.10       # 10% of gross income
   insurance_annual: 1500.00     # fallback if no listed insurance & no per-unit basis
   insurance_per_unit: 500.00    # IRE default: 500 * number of units
-  maintenance_reserve_pct: 0.05 # 5% of gross income
+  maintenance_reserve_pct: 0.10 # 10% of gross income (used as MAX vs listed)
   vacancy_rate: 0.05            # 5% vacancy assumption
   utilities_monthly: 0.00       # landlord-paid utilities (0 if tenant pays)
   # IRE itemized / CapEx knobs (mirrors sample_proforma.xlsx)
