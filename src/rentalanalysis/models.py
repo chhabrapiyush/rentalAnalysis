@@ -91,10 +91,12 @@ class ExpenseConfig(BaseModel):
     insurance_annual: float = 1500.0          # used only if no listed insurance & no per-unit basis
     insurance_per_unit: float = 500.0         # IRE default: 500 * units
     maintenance_reserve_pct: float = 0.05
+    maintenance_on: bool = False              # count maintenance in expenses? (pre-filled either way)
     vacancy_rate: float = 0.05
     utilities_monthly: float = 0.0
     # IRE itemized / CapEx knobs (mirrors sample_proforma.xlsx)
     capex_reserve_pct: float = 0.05           # Replacement Reserves (% of gross income)
+    capex_on: bool = False                    # count CapEx reserves in expenses? (pre-filled either way)
     leasing_fee_pct: float = 0.0              # off by default (sample toggle 'n')
     trash_annual: float = 360.0               # 30 * 12
     recycle_per_unit: float = 50.0
@@ -164,8 +166,12 @@ class AnalysisResult(BaseModel):
 
     # CapEx & two-tier NOI
     capex_reserve: float = 0.0
-    total_net_operating_expenses: float = 0.0   # operating_expenses + capex_reserve
+    total_net_operating_expenses: float = 0.0   # operating_expenses_used + applied capex
     effective_noi: float = 0.0                  # EGI - total_net_operating_expenses (drives DSCR)
+
+    # Whether maintenance / capex are counted (toggle default) — pre-filled either way
+    maintenance_on: bool = False
+    capex_on: bool = False
 
     # Income sourcing
     rent_source: str = "Assumed"                # "OneHome (rent roll)" | "OneHome (gross income)" | "Assumed"

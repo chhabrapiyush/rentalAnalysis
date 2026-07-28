@@ -9,10 +9,12 @@ expenses:
   insurance_annual: 1500.00     # fallback if no listed insurance & no per-unit basis
   insurance_per_unit: 500.00    # IRE default: 500 * number of units
   maintenance_reserve_pct: 0.10 # 10% of gross income (used as MAX vs listed)
+  maintenance_on: false         # off by default (pre-filled; flip toggle in Excel to include)
   vacancy_rate: 0.05            # 5% vacancy assumption
   utilities_monthly: 0.00       # landlord-paid utilities (0 if tenant pays)
   # IRE itemized / CapEx knobs (mirrors sample_proforma.xlsx)
   capex_reserve_pct: 0.05       # Replacement Reserves (% of gross income)
+  capex_on: false               # off by default (pre-filled; flip toggle in Excel to include)
   leasing_fee_pct: 0.00         # leasing fee (% of gross income); 0 = off
   trash_annual: 360.00          # 30/mo * 12
   recycle_per_unit: 50.00       # 50 per unit annually

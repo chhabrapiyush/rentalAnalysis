@@ -130,6 +130,23 @@ def test_overview_sorted_by_cash_on_cash(tmp_path, sample_config):
     assert ws.cell(row=3, column=2).value == "Good Deal St"   # highest CoC first
 
 
+def test_maintenance_and_capex_toggles_default_off(tmp_path, sample_listing, sample_config):
+    result = analyze_property(sample_listing, sample_config)
+    out = tmp_path / "toggles.xlsx"
+    build_workbook([result], out, sample_config)
+    wb = openpyxl.load_workbook(out)
+    ws = wb[[n for n in wb.sheetnames if n != "Overview"][0]]
+    # Find the Maintenance and CapEx rows and confirm their D-column toggle is "n".
+    wanted = {"Maintenance / Repairs", "Replacement Reserves (CapEx)"}
+    toggles = {}
+    for row in ws.iter_rows(min_col=1, max_col=1):
+        label = row[0].value
+        if label in wanted:
+            toggles[label] = ws.cell(row=row[0].row, column=4).value
+    assert set(toggles) == wanted, f"rows found: {set(toggles)}"
+    assert all(v == "n" for v in toggles.values()), toggles
+
+
 def test_ratio_formulas_are_divzero_guarded(tmp_path, sample_listing, sample_config):
     result = analyze_property(sample_listing, sample_config)
     out = tmp_path / "guard.xlsx"

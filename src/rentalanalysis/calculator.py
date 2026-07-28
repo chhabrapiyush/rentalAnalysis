@@ -190,11 +190,13 @@ def analyze_property(
         insurance_source = "Assumed"
 
     # Maintenance: the greater of the listing's figure and the % assumption
-    # (conservative — never understate maintenance).
+    # (conservative — never understate maintenance). Always computed as the pre-fill
+    # value; only counted in expenses when the toggle is on.
     maint_candidate = gross_rental_income * exp.maintenance_reserve_pct
     listed_maint = listing.maintenance_annual_listed or 0.0
     maintenance_annual = max(listed_maint, maint_candidate)
     maintenance_source = "OneHome" if listed_maint >= maint_candidate and listed_maint > 0 else "Assumed"
+    maint_applied = maintenance_annual if exp.maintenance_on else 0.0
 
     mgmt_fee_annual = gross_rental_income * exp.property_mgmt_pct
     hoa_annual = listing.hoa_monthly * 12
@@ -216,7 +218,7 @@ def analyze_property(
         taxes_annual
         + insurance_annual
         + mgmt_fee_annual
-        + maintenance_annual
+        + maint_applied
         + hoa_annual
         + utilities_annual
         + trash_annual
@@ -253,9 +255,11 @@ def analyze_property(
         operating_expenses_used = operating_expenses
         opex_basis = "Calculated"
 
-    # CapEx reserves and Total Net Operating Expenses (sample C39/C40)
+    # CapEx reserves and Total Net Operating Expenses (sample C39/C40).
+    # Always computed as the pre-fill value; only added when the toggle is on.
     capex_reserve = gross_rental_income * exp.capex_reserve_pct
-    total_net_operating_expenses = operating_expenses_used + capex_reserve
+    capex_applied = capex_reserve if exp.capex_on else 0.0
+    total_net_operating_expenses = operating_expenses_used + capex_applied
 
     # Two-tier NOI (sample J41 vs C42) — driven by the conservative expense basis
     noi = effective_gross_income - operating_expenses_used             # cap rate / valuation
@@ -297,6 +301,8 @@ def analyze_property(
         operating_expenses=round(operating_expenses, 2),
         operating_expenses_used=round(operating_expenses_used, 2),
         opex_basis=opex_basis,
+        maintenance_on=exp.maintenance_on,
+        capex_on=exp.capex_on,
         capex_reserve=round(capex_reserve, 2),
         total_net_operating_expenses=round(total_net_operating_expenses, 2),
         effective_noi=round(effective_noi, 2),

@@ -62,12 +62,12 @@ def test_analyze_property_basic(sample_listing, sample_config):
         result.effective_gross_income - result.operating_expenses, abs=0.01
     )
 
-    # CapEx reserve = 5% of gross income = 1,500
+    # CapEx reserve is pre-filled (5% of gross = 1,500) but OFF by default, so it is
+    # NOT added to the total net operating expenses.
     assert result.capex_reserve == pytest.approx(1_500, abs=0.01)
-
-    # Total net operating expenses = operating expenses + CapEx reserve
+    assert result.capex_on is False
     assert result.total_net_operating_expenses == pytest.approx(
-        result.operating_expenses + result.capex_reserve, abs=0.01
+        result.operating_expenses_used, abs=0.01
     )
 
     # Effective NOI = EGI - total net operating expenses (drives DSCR / debt sizing)
@@ -327,6 +327,37 @@ def test_maintenance_uses_greater_of_listed_or_10pct(sample_listing, sample_conf
     r_high = analyze_property(high, sample_config)
     assert r_high.maintenance_annual == pytest.approx(5_000, abs=0.01)
     assert r_high.maintenance_source == "OneHome"
+
+
+def test_maintenance_and_capex_off_by_default(sample_listing, sample_config):
+    result = analyze_property(sample_listing, sample_config)
+    # Pre-filled values exist...
+    assert result.maintenance_annual == pytest.approx(3_000, abs=0.01)
+    assert result.capex_reserve == pytest.approx(1_500, abs=0.01)
+    # ...but neither is counted: operating expenses exclude the 3,000 maintenance,
+    # and total net = operating expenses used (no capex added).
+    assert result.maintenance_on is False and result.capex_on is False
+    with_maint = result.operating_expenses + result.maintenance_annual
+    # Sanity: adding maintenance back would raise the total by exactly 3,000
+    assert with_maint - result.operating_expenses == pytest.approx(3_000, abs=0.01)
+    assert result.total_net_operating_expenses == pytest.approx(result.operating_expenses_used, abs=0.01)
+
+
+def test_maintenance_and_capex_on_when_enabled(sample_listing, sample_config):
+    cfg = sample_config.model_copy(deep=True)
+    cfg.expenses.maintenance_on = True
+    cfg.expenses.capex_on = True
+    off = analyze_property(sample_listing, sample_config)
+    on = analyze_property(sample_listing, cfg)
+    # Maintenance (3,000) now included in operating expenses
+    assert on.operating_expenses == pytest.approx(off.operating_expenses + 3_000, abs=0.01)
+    # CapEx (1,500) now included in total net operating expenses
+    assert on.total_net_operating_expenses == pytest.approx(
+        on.operating_expenses_used + on.capex_reserve, abs=0.01
+    )
+    # Turning them on makes the deal look worse (lower NOI, cap rate)
+    assert on.noi < off.noi
+    assert on.effective_noi < off.effective_noi
 
 
 def test_electric_expense_added_to_opex(sample_listing, sample_config):

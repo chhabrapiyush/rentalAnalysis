@@ -342,7 +342,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _label(ws, m_row, 1, "Maintenance / Repairs")
     _input(ws, m_row, 2, maint_pct, PERCENT_FMT)
     _calc(ws, m_row, 3, f'=IF(D{m_row}="y",MAX({listed_maint},C{R_GROSS}*B{m_row}),0)', CURRENCY_FMT)
-    _input(ws, m_row, 4, "y")
+    _input(ws, m_row, 4, "y" if result.maintenance_on else "n")
     refs["maintenance"] = f"C{m_row}"
     er += 1
 
@@ -390,7 +390,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _label(ws, R_CAPEX, 1, "Replacement Reserves (CapEx)")
     _input(ws, R_CAPEX, 2, capex_pct, PERCENT_FMT)
     _calc(ws, R_CAPEX, 3, f'=IF(D{R_CAPEX}="y",C{R_GROSS}*B{R_CAPEX},0)', CURRENCY_FMT)
-    _input(ws, R_CAPEX, 4, "y")
+    _input(ws, R_CAPEX, 4, "y" if result.capex_on else "n")
     er += 1
     R_TOTNET = er
     refs["total_net_operating_expenses"] = f"C{R_TOTNET}"
