@@ -161,7 +161,7 @@ async def _scrape_with_search(
 ) -> list:
     from playwright.async_api import async_playwright
 
-    from .scraper import collect_search_property_urls, scrape_listing, _load_cache, _save_cache
+    from .scraper import collect_search_property_urls, scrape_listing_with_retry, _load_cache, _save_cache
     import random
 
     all_urls = list(urls)
@@ -192,7 +192,7 @@ async def _scrape_with_search(
                     results.append(cached)
                     continue
             try:
-                listing = await scrape_listing(page, url, email=email, password=password)
+                listing = await scrape_listing_with_retry(page, url, email=email, password=password)
                 if cache:
                     _save_cache(listing)
                 results.append(listing)

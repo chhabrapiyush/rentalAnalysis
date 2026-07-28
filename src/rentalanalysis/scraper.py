@@ -354,6 +354,34 @@ async def scrape_listing(page: Page, url: str, email: str = "", password: str = 
     )
 
 
+async def scrape_listing_with_retry(
+    page: Page, url: str, email: str = "", password: str = "",
+    retries: int = 2, base_delay: float = 2.0,
+) -> PropertyListing:
+    """scrape_listing with exponential backoff on transient failures.
+
+    Retries on an exception, and also when a load returns no price (a common
+    symptom of a page that didn't render). Backoff is base_delay * 2**attempt
+    plus a little jitter. Re-raises the last exception if every attempt errors.
+    """
+    last_exc: Optional[Exception] = None
+    listing: Optional[PropertyListing] = None
+    for attempt in range(retries + 1):
+        try:
+            listing = await scrape_listing(page, url, email=email, password=password)
+            if listing.list_price > 0 or attempt == retries:
+                return listing
+            log.warning("Attempt %d for %s returned no price; retrying", attempt + 1, url)
+        except Exception as exc:
+            last_exc = exc
+            log.warning("Attempt %d failed for %s: %s", attempt + 1, url, exc)
+        if attempt < retries:
+            await asyncio.sleep(base_delay * (2 ** attempt) + random.uniform(0, 0.5))
+    if last_exc is not None:
+        raise last_exc
+    return listing  # last attempt's listing (may lack a price, but no exception)
+
+
 _AOTF_RE = re.compile(r"aotf~\d+~[A-Z]+")
 
 
@@ -555,7 +583,7 @@ async def scrape_listings(
 
         for url in to_fetch:
             try:
-                listing = await scrape_listing(page, url, email=email, password=password)
+                listing = await scrape_listing_with_retry(page, url, email=email, password=password)
                 if use_cache:
                     _save_cache(listing)
                 results.append(listing)

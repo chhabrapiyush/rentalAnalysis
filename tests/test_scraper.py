@@ -41,6 +41,56 @@ def test_list_url_unchanged():
     assert _to_list_view(url) == url
 
 
+def _stub_listing(price):
+    from rentalanalysis.models import PropertyListing
+    return PropertyListing(url="u", address="A", list_price=price, beds=1, baths=1)
+
+
+def test_retry_recovers_after_transient_failure(monkeypatch):
+    import asyncio
+    from rentalanalysis import scraper
+    calls = {"n": 0}
+
+    async def flaky(page, url, email="", password=""):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transient blip")
+        return _stub_listing(100000)
+
+    monkeypatch.setattr(scraper, "scrape_listing", flaky)
+    result = asyncio.run(scraper.scrape_listing_with_retry(None, "u", base_delay=0))
+    assert result.list_price == 100000
+    assert calls["n"] == 2  # failed once, retried, succeeded
+
+
+def test_retry_reraises_after_exhausting(monkeypatch):
+    import asyncio
+    import pytest as _pytest
+    from rentalanalysis import scraper
+
+    async def always_fail(page, url, email="", password=""):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(scraper, "scrape_listing", always_fail)
+    with _pytest.raises(RuntimeError):
+        asyncio.run(scraper.scrape_listing_with_retry(None, "u", retries=1, base_delay=0))
+
+
+def test_retry_on_zero_price_returns_last_attempt(monkeypatch):
+    import asyncio
+    from rentalanalysis import scraper
+    calls = {"n": 0}
+
+    async def zero_price(page, url, email="", password=""):
+        calls["n"] += 1
+        return _stub_listing(0)
+
+    monkeypatch.setattr(scraper, "scrape_listing", zero_price)
+    result = asyncio.run(scraper.scrape_listing_with_retry(None, "u", retries=2, base_delay=0))
+    assert result.list_price == 0
+    assert calls["n"] == 3  # all attempts used before giving up
+
+
 def test_reconstruct_property_url_carries_token_and_search():
     search = "https://portal.onehome.com/en-US/properties/map?token=TOK123&searchId=SID456"
     out = _reconstruct_property_url("aotf~999~HIGH", search)
