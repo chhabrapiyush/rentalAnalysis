@@ -106,7 +106,7 @@ class ExpenseConfig(BaseModel):
 
 class TargetConfig(BaseModel):
     min_monthly_cash_flow: float = 200.0      # minimum $/mo
-    min_cash_on_cash_pct: float = 0.12        # 12% annual CoC
+    min_cash_on_cash_pct: float = 0.10        # 10% annual CoC
     min_cap_rate_pct: float = 0.07            # 7% cap rate
     min_dscr: float = 1.20                    # 1.20x debt service coverage
     max_ltv: float = 0.80                     # 80% max LTV

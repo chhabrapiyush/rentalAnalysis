@@ -27,7 +27,7 @@ fallback_rent_monthly_pct: 0.007   # 0.7% of price per month
 
 targets:
   min_monthly_cash_flow: 200       # $200/mo minimum cash flow
-  min_cash_on_cash_pct: 0.12       # 12% annual cash-on-cash return
+  min_cash_on_cash_pct: 0.10       # 10% annual cash-on-cash return
   min_cap_rate_pct: 0.07           # 7% cap rate
   min_dscr: 1.20                   # 1.20x debt service coverage ratio
   max_ltv: 0.80                    # 80% max loan-to-value
