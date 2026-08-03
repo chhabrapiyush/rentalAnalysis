@@ -83,7 +83,7 @@ class LoanConfig(BaseModel):
     down_payment_pct: float = 0.20
     interest_rate: float = 0.07
     loan_term_years: int = 30
-    closing_costs: float = 5000.0
+    closing_costs_pct: float = 0.03    # closing costs as % of purchase price
 
 
 class ExpenseConfig(BaseModel):
@@ -197,6 +197,7 @@ class AnalysisResult(BaseModel):
     loan_amount: float
     monthly_payment: float
     annual_debt_service: float
+    closing_costs: float = 0.0                   # purchase_price * closing_costs_pct
 
     # Cash flow & returns
     cash_flow_annual: float

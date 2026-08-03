@@ -208,7 +208,8 @@ def analyze_property(
 
     loan_amount = purchase_price * (1 - loan.down_payment_pct)
     down_payment = purchase_price * loan.down_payment_pct
-    total_cash_invested = down_payment + loan.closing_costs
+    closing_costs = purchase_price * loan.closing_costs_pct
+    total_cash_invested = down_payment + closing_costs
     ltv = loan_amount / purchase_price if purchase_price else 0.0
 
     monthly_payment = compute_monthly_payment(loan_amount, loan.interest_rate, loan.loan_term_years)
@@ -372,6 +373,7 @@ def analyze_property(
         loan_amount=round(loan_amount, 2),
         monthly_payment=round(monthly_payment, 2),
         annual_debt_service=round(annual_debt_service, 2),
+        closing_costs=round(closing_costs, 2),
         cash_flow_annual=round(cash_flow_annual, 2),
         cash_flow_monthly=round(cash_flow_monthly, 2),
         cap_rate=round(cap_rate, 6),

@@ -137,7 +137,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     insurance_per_unit = round(result.insurance_annual / units, 2) if units else result.insurance_annual
     recycle_per_unit = round(result.recycle_annual / units, 2) if units else 0.0
     rate = _derive_rate(result)
-    closing = round(result.total_cash_invested - price * (1 - result.ltv), 2)
+    closing_pct = round(result.closing_costs / price, 4) if price else 0.03
 
     # Column widths
     widths = {"A": 30, "B": 8, "C": 15, "D": 6, "E": 2,
@@ -182,7 +182,8 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     _label(ws, R_LTV, 6, "LTV");                     _input(ws, R_LTV, 7, round(result.ltv, 4), PERCENT_FMT)
     _label(ws, R_LOAN, 6, "Loan Amount");            _calc(ws, R_LOAN, 7, f"=G{R_PRICE}*G{R_LTV}", CURRENCY0_FMT)
     _label(ws, R_DOWN, 6, "Down Payment");           _calc(ws, R_DOWN, 7, f"=G{R_PRICE}-G{R_LOAN}", CURRENCY0_FMT)
-    _label(ws, R_CLOSE, 6, "Closing Costs");         _input(ws, R_CLOSE, 7, closing, CURRENCY0_FMT)
+    _label(ws, R_CLOSE, 6, f"Closing Costs ({closing_pct:.0%})")
+    _calc(ws, R_CLOSE, 7, f"=G{R_PRICE}*{closing_pct}", CURRENCY0_FMT)
     _label(ws, R_REPAIR, 6, "Repairs / Rehab");      _input(ws, R_REPAIR, 7, 0, CURRENCY0_FMT)
     _label(ws, R_INIT, 6, "Initial Investment", bold=True)
     _calc(ws, R_INIT, 7, f"=G{R_DOWN}+G{R_CLOSE}+G{R_REPAIR}", CURRENCY0_FMT, bold=True)

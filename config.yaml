@@ -2,7 +2,7 @@ loan:
   down_payment_pct: 0.20        # 20% down
   interest_rate: 0.07           # 7% annual
   loan_term_years: 30
-  closing_costs: 5000.00        # flat estimate
+  closing_costs_pct: 0.03       # closing costs as 3% of purchase price
 
 expenses:
   property_mgmt_pct: 0.10       # 10% of gross income

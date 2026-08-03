@@ -56,8 +56,10 @@ def test_analyze_property_basic(sample_listing, sample_config):
     # Loan = 400,000 * 0.80 = 320,000
     assert result.loan_amount == pytest.approx(320_000, abs=0.01)
 
-    # Total cash invested = 80,000 + 5,000 = 85,000
-    assert result.total_cash_invested == pytest.approx(85_000, abs=0.01)
+    # Closing costs = 3% of 400,000 = 12,000
+    assert result.closing_costs == pytest.approx(12_000, abs=0.01)
+    # Total cash invested = 80,000 down + 12,000 closing = 92,000
+    assert result.total_cash_invested == pytest.approx(92_000, abs=0.01)
 
     # NOI = EGI - operating expenses (excludes CapEx reserves)
     assert result.noi == pytest.approx(
