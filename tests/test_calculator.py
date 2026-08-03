@@ -5,6 +5,8 @@ from rentalanalysis.calculator import (
     apply_property_overrides,
     compute_amortization_schedule,
     compute_monthly_payment,
+    detect_non_rentable,
+    evaluate_deal,
 )
 from rentalanalysis.models import AnalysisConfig, LoanConfig, PropertyListing
 
@@ -314,6 +316,43 @@ def test_fallback_rent_used_and_flagged(sample_config):
 def test_fallback_not_used_when_rent_present(sample_listing, sample_config):
     result = analyze_property(sample_listing, sample_config, use_fallback_rent=True)
     assert result.data_complete is True
+
+
+def test_non_rentable_detected_by_land_keyword():
+    listing = PropertyListing(
+        url="https://x/land", address="Empty Lot Rd", list_price=100_000,
+        beds=3, baths=2, sqft=1200, estimated_rent_monthly=1500,
+        property_type="Vacant Land",
+    )
+    reason = detect_non_rentable(listing)
+    assert reason is not None and "land" in reason.lower()
+
+
+def test_non_rentable_detected_by_structural_signal():
+    # The 806 Quincy pattern: mis-typed "Residential Income" but 0 bd / 0 ba / no sqft.
+    listing = PropertyListing(
+        url="https://x/quincy", address="806 Quincy St #802", list_price=149_999,
+        beds=0, baths=0, sqft=None, estimated_rent_monthly=5000,
+        property_type="Residential Income", total_units=2,
+    )
+    assert detect_non_rentable(listing) is not None
+
+
+def test_normal_listing_not_flagged_non_rentable(sample_listing):
+    assert detect_non_rentable(sample_listing) is None
+
+
+def test_non_rentable_result_excluded_from_grading(sample_config):
+    listing = PropertyListing(
+        url="https://x/quincy", address="806 Quincy St #802", list_price=149_999,
+        beds=0, baths=0, sqft=None, estimated_rent_monthly=5000,
+        property_type="Residential Income", total_units=2,
+    )
+    result = analyze_property(listing, sample_config)
+    assert result.non_rentable is True
+    assert result.non_rentable_reason
+    # Even with an absurdly high CoC, the verdict is EXCLUDED, not GO.
+    assert evaluate_deal(result, sample_config.targets)["verdict"] == "EXCLUDED"
 
 
 def test_maintenance_uses_greater_of_listed_or_10pct(sample_listing, sample_config):

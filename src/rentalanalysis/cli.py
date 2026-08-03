@@ -114,7 +114,12 @@ def analyze(
             )
             results.append(result)
             verdict = evaluate_deal(result, cfg.targets)["verdict"]
-            flag = "  [red]⚠ incomplete[/red]" if not result.data_complete else ""
+            if result.non_rentable:
+                flag = "  [bright_black]⚫ non-rentable (land)[/bright_black]"
+            elif not result.data_complete:
+                flag = "  [red]⚠ incomplete[/red]"
+            else:
+                flag = ""
             if not result.data_complete:
                 incomplete += 1
             console.print(f"[dim][{i}/{total}][/dim] {listing.address} — [bold]{verdict}[/bold]{flag}")

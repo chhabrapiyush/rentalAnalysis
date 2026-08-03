@@ -15,6 +15,52 @@ _HANDLED_EXPENSE_KEYS = {
 }
 
 
+# Values (in Type / Property Type / Sub Type / Zoning / Condition fields) that mark a
+# listing as not an operating rental. MLS records are frequently mis-typed at the top
+# level (e.g. a bare lot tagged "Residential Income"), so we also fall back to a
+# structural check in detect_non_rentable().
+_LAND_KEYWORDS = ("vacant land", "vacant lot", "raw land", "land", "acreage",
+                  "farm", "agricultural", "unimproved", "to be built", "pre-construction",
+                  "pre construction", "proposed construction")
+
+# OneHome detail keys whose *values* we scan for the land keywords above.
+_TYPE_DETAIL_KEYS = ("type", "property type", "property sub type", "additional property type",
+                     "property subtype", "sub type", "structure type")
+
+
+def detect_non_rentable(listing: PropertyListing) -> Optional[str]:
+    """Return a human-readable reason if the listing is not an operating rental
+    (land, vacant lot, or pre-construction), else None.
+
+    Two independent signals — either one flags the listing:
+      1. An explicit land/pre-construction keyword in any type/subtype field.
+      2. Structural implausibility: no beds, no baths, no sqft, and no rent roll —
+         a dwelling you can rent always has at least one of these. This catches the
+         common case of a lot mis-typed as "Residential Income" (e.g. 806 Quincy).
+    """
+    details = listing.listing_details or {}
+
+    # 1. Keyword scan across the top-level type and the detail type/subtype fields.
+    candidates = [listing.property_type or ""]
+    for label, value in details.items():
+        if label.strip().rstrip(":").lower() in _TYPE_DETAIL_KEYS and value:
+            candidates.append(str(value))
+    haystack = " ".join(candidates).lower()
+    for kw in _LAND_KEYWORDS:
+        if kw in haystack:
+            return f"Listing type indicates land / pre-construction ({kw!r}) — not an operating rental."
+
+    # 2. Structural check — nothing habitable described.
+    no_beds = not listing.beds
+    no_baths = not listing.baths
+    no_sqft = not listing.sqft
+    no_roll = not listing.rent_roll
+    if no_beds and no_baths and no_sqft and no_roll:
+        return ("No habitable units in the listing data (0 bd / 0 ba, no sqft, no rent roll) "
+                "— likely land or pre-construction; income metrics not meaningful.")
+    return None
+
+
 def _parse_currency(value: str) -> Optional[float]:
     if value is None:
         return None
@@ -121,6 +167,13 @@ def analyze_property(
     data_complete = True
     data_notes: list[str] = []
     fallback_pct = config.fallback_rent_monthly_pct
+
+    # Land / vacant-lot / pre-construction marker. Metrics are still computed (so the
+    # sheet is populated) but the deal is excluded from grading and flagged everywhere.
+    non_rentable_reason = detect_non_rentable(listing)
+    non_rentable = non_rentable_reason is not None
+    if non_rentable:
+        data_notes.append(f"⚫ NON-RENTABLE: {non_rentable_reason}")
 
     if monthly_rent is None:
         # Batch runs fall back to an assumed rent so no listing is dropped; single
@@ -277,6 +330,8 @@ def analyze_property(
         listing=listing,
         data_complete=data_complete,
         data_notes=data_notes,
+        non_rentable=non_rentable,
+        non_rentable_reason=non_rentable_reason,
         gross_rental_income=round(gross_rental_income, 2),
         rent_roll_annual=round(rent_roll_annual, 2),
         income_basis=income_basis,
@@ -329,7 +384,11 @@ def analyze_property(
 
 
 def evaluate_deal(result: AnalysisResult, targets: TargetConfig) -> dict:
-    """Return pass/fail for each target metric and an overall verdict."""
+    """Return pass/fail for each target metric and an overall verdict.
+
+    Non-rentable listings (land / pre-construction) short-circuit to EXCLUDED — their
+    income metrics are not meaningful, so a GO/NO-GO grade would be misleading.
+    """
     checks = {
         "monthly_cash_flow": (result.cash_flow_monthly, targets.min_monthly_cash_flow, ">="),
         "annual_cash_on_cash": (result.cash_on_cash, targets.min_cash_on_cash_pct, ">="),
@@ -340,6 +399,10 @@ def evaluate_deal(result: AnalysisResult, targets: TargetConfig) -> dict:
     passed = {}
     for key, (actual, target, op) in checks.items():
         passed[key] = actual >= target if op == ">=" else actual <= target
+
+    if getattr(result, "non_rentable", False):
+        return {"checks": passed, "verdict": "EXCLUDED",
+                "pass_count": sum(passed.values()), "total": len(passed)}
 
     # Verdict on the two primary gates (cash flow + cash-on-cash):
     #   GO = both pass, NO-GO = neither passes, BORDERLINE = exactly one passes.

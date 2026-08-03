@@ -134,6 +134,12 @@ class AnalysisResult(BaseModel):
     data_complete: bool = True                   # False when OneHome income data was missing
     data_notes: list[str] = []                   # human-readable caveats
 
+    # Non-rentable marker: land / vacant lot / pre-construction — no operating dwelling,
+    # so income-based metrics (cap rate, CoC, DSCR) are not meaningful and the deal is
+    # excluded from GO/BORDERLINE/NO-GO grading.
+    non_rentable: bool = False
+    non_rentable_reason: Optional[str] = None
+
     # Income
     gross_rental_income: float                   # conservative basis actually used
     rent_roll_annual: float = 0.0                # uncapped rent-roll total (reference)

@@ -151,8 +151,17 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     t.font = Font(bold=True, size=13, color="1F4E79")
     ws.merge_cells("A1:D1")
 
-    # Incomplete-data banner (row 2 is otherwise empty, so no coordinates shift)
-    if not result.data_complete:
+    # Row 2 banner (otherwise empty, so no coordinates shift). Non-rentable takes
+    # precedence over the incomplete-data banner — it's the more important caveat.
+    if result.non_rentable:
+        reason = result.non_rentable_reason or "Not an operating rental."
+        b = ws.cell(row=2, column=1,
+                    value=f"⚫ NON-RENTABLE (LAND / PRE-CONSTRUCTION) — {reason} "
+                          f"Income metrics below are NOT meaningful; excluded from grading.")
+        b.font = Font(bold=True, color="FFFFFF")
+        b.fill = PatternFill(fill_type="solid", fgColor="424949")
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=13)
+    elif not result.data_complete:
         note = result.data_notes[0] if result.data_notes else "No OneHome income data."
         b = ws.cell(row=2, column=1, value=f"⚠ INCOMPLETE — {note} Edit the yellow rent cells to complete.")
         b.font = Font(bold=True, color="FFFFFF")
@@ -507,18 +516,23 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
         metric_rows.append(r)
         r += 1
 
-    # Deal verdict
+    # Deal verdict. Non-rentable listings show a static EXCLUDED verdict (the live
+    # PASS/FAIL formula would otherwise report a meaningless GO off garbage income).
     cf_row, coc_row = metric_rows[0], metric_rows[1]
-    verdict_formula = (
-        f'=IF(M{cf_row}="✓ PASS",'
-        f'IF(M{coc_row}="✓ PASS","🟢 GO — TAKE THE DEAL","🟡 BORDERLINE — REVIEW"),'
-        f'IF(M{coc_row}="✓ PASS","🟡 BORDERLINE — REVIEW","🔴 NO-GO — PASS"))'
-    )
     ws.merge_cells(start_row=r, start_column=10, end_row=r, end_column=13)
-    vcell = ws.cell(row=r, column=10, value=verdict_formula)
+    if result.non_rentable:
+        vcell = ws.cell(row=r, column=10, value="⚫ EXCLUDED — NON-RENTABLE (LAND)")
+        verdict_color = "424949"
+    else:
+        verdict_formula = (
+            f'=IF(M{cf_row}="✓ PASS",'
+            f'IF(M{coc_row}="✓ PASS","🟢 GO — TAKE THE DEAL","🟡 BORDERLINE — REVIEW"),'
+            f'IF(M{coc_row}="✓ PASS","🟡 BORDERLINE — REVIEW","🔴 NO-GO — PASS"))'
+        )
+        vcell = ws.cell(row=r, column=10, value=verdict_formula)
+        verdict_color = {"GO": "1E8449", "BORDERLINE": "9A7D0A", "NO-GO": "922B21"}[deal["verdict"]]
     vcell.font = Font(bold=True, size=13, color="FFFFFF")
     vcell.alignment = Alignment(horizontal="center", vertical="center")
-    verdict_color = {"GO": "1E8449", "BORDERLINE": "9A7D0A", "NO-GO": "922B21"}[deal["verdict"]]
     vcell.fill = PatternFill(fill_type="solid", fgColor=verdict_color)
     ws.row_dimensions[r].height = 26
     r += 2
@@ -689,7 +703,7 @@ def write_comparison_sheet(wb: Workbook, columns: list, targets: TargetConfig) -
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(results) + 1)
 
     verdict_fill = {"GO": ("1E8449", "FFFFFF"), "BORDERLINE": ("9A7D0A", "FFFFFF"),
-                    "NO-GO": ("922B21", "FFFFFF")}
+                    "NO-GO": ("922B21", "FFFFFF"), "EXCLUDED": ("424949", "FFFFFF")}
     ws.cell(row=3, column=1, value="Metric").font = Font(bold=True)
     for i, (title, r, refs) in enumerate(columns, start=2):
         col = get_column_letter(i)
@@ -817,7 +831,8 @@ def write_comparison_sheet(wb: Workbook, columns: list, targets: TargetConfig) -
                     cell_val = "⚠ OVER" if result.opex_exceeds_listed else "✓ OK"
             elif attr == "_verdict":
                 deal = evaluate_deal(result, targets)
-                icons = {"GO": "🟢 GO", "BORDERLINE": "🟡 BORDERLINE", "NO-GO": "🔴 NO-GO"}
+                icons = {"GO": "🟢 GO", "BORDERLINE": "🟡 BORDERLINE", "NO-GO": "🔴 NO-GO",
+                         "EXCLUDED": "⚫ EXCLUDED (LAND)"}
                 cell_val = icons[deal["verdict"]]
             else:
                 obj = result
@@ -852,6 +867,9 @@ def write_comparison_sheet(wb: Workbook, columns: list, targets: TargetConfig) -
                     cell.fill = GREEN_FILL; cell.font = Font(bold=True)
                 elif "🟡" in cell_val:
                     cell.fill = YELLOW_FILL; cell.font = Font(bold=True)
+                elif "⚫" in cell_val:
+                    cell.fill = PatternFill(fill_type="solid", fgColor="424949")
+                    cell.font = Font(bold=True, color="FFFFFF")
                 else:
                     cell.fill = RED_FILL; cell.font = Font(bold=True, color="FFFFFF")
 
@@ -883,8 +901,10 @@ def build_workbook(results: list[AnalysisResult], output_path: Path, config: Ana
     if "Sheet" in wb.sheetnames:
         del wb["Sheet"]
 
-    # Rank best-first: highest cash-on-cash, cap rate breaking ties.
-    ranked = sorted(results, key=lambda r: (-r.cash_on_cash, -r.cap_rate))
+    # Rank best-first: highest cash-on-cash, cap rate breaking ties. Non-rentable
+    # listings (land / pre-construction) always sort last — their inflated metrics
+    # must never float to the top of the comparison.
+    ranked = sorted(results, key=lambda r: (r.non_rentable, -r.cash_on_cash, -r.cap_rate))
 
     # Property sheets first so their names + cell refs exist for the Overview.
     used_titles: set[str] = {"overview"}
