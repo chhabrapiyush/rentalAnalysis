@@ -46,13 +46,13 @@ def test_slug_filesystem_safe(sample_listing):
 
 def test_analysis_config_defaults():
     config = AnalysisConfig()
-    assert config.loan.down_payment_pct == pytest.approx(0.20)
+    assert config.loan.down_payment_pct == pytest.approx(0.25)
     assert config.expenses.vacancy_rate == pytest.approx(0.05)
     assert config.property_overrides == {}
 
 
 def test_analysis_config_from_yaml(tmp_path, sample_config):
-    assert sample_config.loan.interest_rate == pytest.approx(0.07)
+    assert sample_config.loan.interest_rate == pytest.approx(0.08625)
     assert sample_config.expenses.property_mgmt_pct == pytest.approx(0.10)
     assert "https://portal.onehome.com/listings/12345" in sample_config.property_overrides
 
