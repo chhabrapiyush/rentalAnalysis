@@ -1,4 +1,10 @@
 .env
+# Google credentials for --gsheet (never commit)
+sa.json
+service-account*.json
+*-sa.json
+client_secret*.json
+*.apps.googleusercontent.com.json
 __pycache__/
 *.pyc
 *.pyo

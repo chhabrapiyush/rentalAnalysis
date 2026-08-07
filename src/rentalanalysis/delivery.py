@@ -22,6 +22,90 @@ class EmailConfigError(RuntimeError):
     pass
 
 
+class GSheetsConfigError(RuntimeError):
+    pass
+
+
+# App only touches files it creates — least-privilege Drive scope.
+_GSHEETS_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+_XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_GSHEET_MIMETYPE = "application/vnd.google-apps.spreadsheet"
+
+
+def _gsheet_upload_body(path: Path, folder_id: str | None, title: str | None) -> dict:
+    """Assemble the Drive files.create body — split out for testability."""
+    body = {"name": title or path.stem, "mimeType": _GSHEET_MIMETYPE}
+    if folder_id:
+        body["parents"] = [folder_id]
+    return body
+
+
+def _load_gsheets_credentials():
+    """Service-account credentials for Drive — the single auth path (local and CI).
+
+    Requires GOOGLE_APPLICATION_CREDENTIALS to point at the service-account JSON key.
+    No browser, no token expiry, identical behaviour everywhere.
+    """
+    sa_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if not sa_path:
+        raise GSheetsConfigError(
+            "Google Sheets upload needs a service account. Set GOOGLE_APPLICATION_CREDENTIALS "
+            "to the path of a service-account JSON key (Drive API enabled)."
+        )
+    if not Path(sa_path).exists():
+        raise GSheetsConfigError(
+            f"GOOGLE_APPLICATION_CREDENTIALS points to {sa_path}, which does not exist."
+        )
+    try:
+        from google.oauth2 import service_account
+    except ImportError as exc:  # optional extra not installed
+        raise GSheetsConfigError(
+            "Google Sheets upload requires extra deps. Install with: "
+            "pip install -e '.[gsheets]'"
+        ) from exc
+    return service_account.Credentials.from_service_account_file(sa_path, scopes=_GSHEETS_SCOPES)
+
+
+def upload_workbook_to_gsheets(path: Path, folder_id: str, title: str | None = None) -> str:
+    """Upload the .xlsx to Google Drive, converting it to a native Google Sheet.
+
+    Returns the shareable webViewLink. Authenticates as a service account via
+    GOOGLE_APPLICATION_CREDENTIALS (see _load_gsheets_credentials). A service account has
+    no usable My Drive of its own, so ``folder_id`` is required: create a Drive folder,
+    share it (Editor) with the service account's email, and pass its ID here so the
+    created Sheet lands somewhere you can see it.
+    """
+    if not folder_id:
+        raise GSheetsConfigError(
+            "A target Drive folder is required. Pass --gsheet-folder <ID> (or set "
+            "GSHEETS_FOLDER_ID) — a folder you've shared with the service account's email. "
+            "Service accounts have no personal Drive, so a Sheet created without a shared "
+            "parent folder can be inaccessible."
+        )
+    creds = _load_gsheets_credentials()
+    try:
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaFileUpload
+    except ImportError as exc:
+        raise GSheetsConfigError(
+            "Google Sheets upload requires extra deps. Install with: "
+            "pip install -e '.[gsheets]'"
+        ) from exc
+
+    service = build("drive", "v3", credentials=creds)
+    media = MediaFileUpload(str(path), mimetype=_XLSX_MIMETYPE, resumable=False)
+    created = (
+        service.files()
+        .create(
+            body=_gsheet_upload_body(path, folder_id, title),
+            media_body=media,
+            fields="id,webViewLink",
+        )
+        .execute()
+    )
+    return created["webViewLink"]
+
+
 def build_workbook_email(path: Path, to_addr: str, from_addr: str, subject: str | None = None) -> EmailMessage:
     """Construct the email (with the .xlsx attached) — separated for testability."""
     msg = EmailMessage()

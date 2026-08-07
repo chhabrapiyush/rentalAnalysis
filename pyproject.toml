@@ -24,6 +24,10 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-mock",
 ]
+gsheets = [
+    "google-api-python-client>=2",
+    "google-auth>=2",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rentalanalysis"]

@@ -39,6 +39,49 @@ cp .env.example .env              # fill in ONEHOME_EMAIL and ONEHOME_PASSWORD
 
 # Force re-scrape (ignore cache)
 .venv/bin/rentalysis analyze URL --no-cache
+
+# Also upload the workbook to Google Sheets (converts xlsx -> native Sheet)
+.venv/bin/rentalysis analyze --search-url "..." -o deals.xlsx --gsheet
+```
+
+## Google Sheets upload (`--gsheet`)
+
+Optional delivery channel that uploads the workbook and converts it to a native Google
+Sheet. **Single auth path — a service account — used identically for local runs and CI**
+(no browser, no token expiry). Install the extra:
+
+```bash
+.venv/bin/pip install -e ".[gsheets]"
+```
+
+One-time setup:
+
+1. Google Cloud Console → create/select a project → **enable the Google Drive API**.
+2. Create a **service account** → create a **JSON key** (download it; never commit — the
+   `.gitignore` covers `sa.json` / `service-account*.json`).
+3. In Google Drive, create a folder and **share it (Editor) with the service account's
+   email**. Note the folder ID from the folder URL.
+
+Then point the tool at the key and folder (env vars work for both local and CI):
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=sa.json
+export GSHEETS_FOLDER_ID=<folder-id>          # or pass --gsheet-folder <id>
+.venv/bin/rentalysis analyze --search-url "..." -o deals.xlsx --gsheet
+```
+
+Uses least-privilege scope `drive.file`. A service account has **no usable My Drive of its
+own**, so a target folder is **required** — that's why you share a folder with it and pass
+its ID; the created Sheet is owned by the service account but visible in your shared folder.
+
+**GitHub Actions:** store the JSON key and folder ID as secrets, then:
+```yaml
+- run: echo "$GCP_SA_KEY" > sa.json
+  env: { GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }} }
+- run: rentalysis analyze --search-url "..." -o deals.xlsx --gsheet
+  env:
+    GOOGLE_APPLICATION_CREDENTIALS: sa.json
+    GSHEETS_FOLDER_ID: ${{ secrets.GSHEETS_FOLDER_ID }}
 ```
 
 ## Architecture

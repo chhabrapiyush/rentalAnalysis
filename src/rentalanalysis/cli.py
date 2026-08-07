@@ -40,6 +40,8 @@ def analyze(
     max_pages: int = typer.Option(10, "--max-pages", help="Max search result pages to paginate"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Max properties to analyze from a search"),
     email_to: Optional[str] = typer.Option(None, "--email-to", help="Email the workbook to this address (SMTP_* env vars)"),
+    gsheet: bool = typer.Option(False, "--gsheet", help="Also upload the workbook to Google Sheets (service account)"),
+    gsheet_folder: Optional[str] = typer.Option(None, "--gsheet-folder", help="Drive folder ID (shared with the service account) to place the Sheet in; or set GSHEETS_FOLDER_ID"),
     cache: bool = typer.Option(True, "--cache/--no-cache", help="Use cached scrape results"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
@@ -152,6 +154,18 @@ def analyze(
             console.print(f"[yellow]Email skipped:[/yellow] {exc}")
         except Exception as exc:
             console.print(f"[red]Email failed:[/red] {exc}")
+
+    # Optional Google Sheets delivery (uploads + converts to a native Sheet)
+    if gsheet:
+        from .delivery import GSheetsConfigError, upload_workbook_to_gsheets
+        folder = gsheet_folder or os.getenv("GSHEETS_FOLDER_ID")
+        try:
+            url = upload_workbook_to_gsheets(output, folder_id=folder)
+            console.print(f"[green]Uploaded[/green] to Google Sheets: {url}")
+        except GSheetsConfigError as exc:
+            console.print(f"[yellow]Google Sheets skipped:[/yellow] {exc}")
+        except Exception as exc:
+            console.print(f"[red]Google Sheets upload failed:[/red] {exc}")
 
 
 async def _scrape_with_search(
