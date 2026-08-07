@@ -53,13 +53,13 @@ def test_analyze_property_basic(sample_listing, sample_config):
     # EGI = 28,500
     assert result.effective_gross_income == pytest.approx(28_500, abs=0.01)
 
-    # Loan = 400,000 * 0.80 = 320,000
-    assert result.loan_amount == pytest.approx(320_000, abs=0.01)
+    # Loan = 400,000 * 0.75 = 300,000
+    assert result.loan_amount == pytest.approx(300_000, abs=0.01)
 
-    # Closing costs = 3% of 400,000 = 12,000
-    assert result.closing_costs == pytest.approx(12_000, abs=0.01)
-    # Total cash invested = 80,000 down + 12,000 closing = 92,000
-    assert result.total_cash_invested == pytest.approx(92_000, abs=0.01)
+    # Closing costs = 4% of 400,000 = 16,000
+    assert result.closing_costs == pytest.approx(16_000, abs=0.01)
+    # Total cash invested = 100,000 down + 16,000 closing = 116,000
+    assert result.total_cash_invested == pytest.approx(116_000, abs=0.01)
 
     # NOI = EGI - operating expenses (excludes CapEx reserves)
     assert result.noi == pytest.approx(
@@ -131,7 +131,8 @@ def test_analyze_property_rent_override(sample_listing, sample_config):
 
 def test_analyze_property_price_override(sample_listing, sample_config):
     result = analyze_property(sample_listing, sample_config, purchase_price_override=350_000)
-    assert result.loan_amount == pytest.approx(280_000, abs=0.01)
+    # 75% LTV → loan = 350,000 * 0.75 = 262,500
+    assert result.loan_amount == pytest.approx(262_500, abs=0.01)
 
 
 def test_analyze_property_no_rent_raises(sample_config):

@@ -80,10 +80,10 @@ class PropertyListing(BaseModel):
 
 
 class LoanConfig(BaseModel):
-    down_payment_pct: float = 0.20
-    interest_rate: float = 0.07
+    down_payment_pct: float = 0.25     # 25% down → 75% LTV
+    interest_rate: float = 0.08625     # 8.625% annual, 30-yr fixed
     loan_term_years: int = 30
-    closing_costs_pct: float = 0.03    # closing costs as % of purchase price
+    closing_costs_pct: float = 0.04    # closing costs as % of purchase price
 
 
 class ExpenseConfig(BaseModel):
@@ -109,7 +109,7 @@ class TargetConfig(BaseModel):
     min_cash_on_cash_pct: float = 0.10        # 10% annual CoC
     min_cap_rate_pct: float = 0.07            # 7% cap rate
     min_dscr: float = 1.20                    # 1.20x debt service coverage
-    max_ltv: float = 0.80                     # 80% max LTV
+    max_ltv: float = 0.75                     # 75% max LTV
 
 
 class AnalysisConfig(BaseModel):

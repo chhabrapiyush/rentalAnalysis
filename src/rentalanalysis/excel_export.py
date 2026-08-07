@@ -137,7 +137,7 @@ def write_property_sheet(wb: Workbook, result: AnalysisResult, targets: TargetCo
     insurance_per_unit = round(result.insurance_annual / units, 2) if units else result.insurance_annual
     recycle_per_unit = round(result.recycle_annual / units, 2) if units else 0.0
     rate = _derive_rate(result)
-    closing_pct = round(result.closing_costs / price, 4) if price else 0.03
+    closing_pct = round(result.closing_costs / price, 4) if price else 0.04
 
     # Column widths
     widths = {"A": 30, "B": 8, "C": 15, "D": 6, "E": 2,
@@ -639,7 +639,7 @@ def _derive_rate(result: AnalysisResult) -> float:
     la, m = result.loan_amount, result.monthly_payment
     n = 30 * 12
     if la <= 0 or m <= 0:
-        return 0.07
+        return 0.08625
     lo, hi = 0.0, 0.5
     for _ in range(60):
         rate = (lo + hi) / 2
